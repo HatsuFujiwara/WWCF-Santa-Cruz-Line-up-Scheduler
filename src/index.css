@@ -1,0 +1,178 @@
+@import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  --primary-color: #1b75bc;
+  --primary-hover: #165d97;
+  --primary-active: #164f7c;
+  --primary-light: #f0f7fc;
+  --primary-border: #dbeefa;
+  --primary-dark-bg: #0f2b44;
+}
+
+/* AMOLED Dark Theme CSS Variable Overrides */
+.dark {
+  /* Primary Background: Pure Black */
+  --color-slate-950: #000000;
+
+  /* Secondary Background (Cards, Dialogs, Modals, Header, Sidebar): #0A0A0A */
+  --color-slate-900: #0A0A0A;
+
+  /* Elevated Surfaces & Inputs: #111111 */
+  --color-slate-800: #111111;
+
+  /* Subtle Borders & Dividers: #1F1F1F */
+  --color-slate-700: #1F1F1F;
+
+  /* Active/Hover Borders: #262626 */
+  --color-slate-600: #262626;
+
+  /* Disabled & Muted Text: #6B7280 */
+  --color-slate-500: #6B7280;
+
+  /* Muted Labels & Secondary Icons: #8C8C8C */
+  --color-slate-400: #8C8C8C;
+
+  /* Secondary Text: #B3B3B3 */
+  --color-slate-300: #B3B3B3;
+
+  /* High Contrast Text: #E5E5E5 */
+  --color-slate-200: #E5E5E5;
+
+  /* Primary White Text: #FFFFFF */
+  --color-slate-100: #FFFFFF;
+
+  /* Slate 50 in dark mode fallback */
+  --color-slate-50: #0A0A0A;
+
+  /* AMOLED Brand Blue / Indigo Tints with #1b75bc accent */
+  --color-indigo-950: #081929;
+  --color-indigo-900: #0d2840;
+  --color-indigo-800: #143e63;
+  --color-indigo-700: #165d97;
+  --color-indigo-600: #1b75bc;
+  --color-indigo-500: #2896d3;
+  --color-indigo-400: #54b0e2;
+  --color-indigo-300: #8ccbed;
+  --color-indigo-200: #bce0f5;
+  --color-indigo-100: #dbeefa;
+  --color-indigo-50:  #0a1520;
+
+  /* Dark mode badge & surface accents */
+  --color-amber-950: #1a1202;
+  --color-amber-900: #2e1f04;
+  --color-amber-800: #4d3307;
+
+  --color-emerald-950: #021a0e;
+  --color-emerald-900: #042e18;
+  --color-emerald-800: #074d28;
+
+  --color-rose-950: #1a0206;
+  --color-rose-900: #2e040b;
+  --color-rose-800: #4d0713;
+
+  background-color: #000000 !important;
+  color: #FFFFFF;
+}
+
+html.dark,
+body.dark {
+  background-color: #000000 !important;
+  color: #FFFFFF;
+}
+
+/* Custom scrollbars for AMOLED Dark Mode */
+.dark ::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.dark ::-webkit-scrollbar-track {
+  background: #000000;
+}
+
+.dark ::-webkit-scrollbar-thumb {
+  background: #1f1f1f;
+  border-radius: 4px;
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: #262626;
+}
+
+/* Ensure native controls adapt properly in dark mode */
+.dark input[type="date"],
+.dark input[type="time"],
+.dark select {
+  color-scheme: dark;
+}
+
+@theme {
+  --color-primary: #1b75bc;
+  --color-primary-hover: #165d97;
+  --color-primary-active: #164f7c;
+
+  --color-brand-50: #f0f7fc;
+  --color-brand-100: #dbeefa;
+  --color-brand-200: #bce0f5;
+  --color-brand-300: #8ccbed;
+  --color-brand-400: #54b0e2;
+  --color-brand-500: #2896d3;
+  --color-brand-600: #1b75bc;
+  --color-brand-700: #165d97;
+  --color-brand-800: #164f7c;
+  --color-brand-900: #174366;
+  --color-brand-950: #0f2b44;
+
+  --color-indigo-50: #f0f7fc;
+  --color-indigo-100: #dbeefa;
+  --color-indigo-200: #bce0f5;
+  --color-indigo-300: #8ccbed;
+  --color-indigo-400: #54b0e2;
+  --color-indigo-500: #2896d3;
+  --color-indigo-600: #1b75bc;
+  --color-indigo-700: #165d97;
+  --color-indigo-800: #164f7c;
+  --color-indigo-900: #174366;
+  --color-indigo-950: #0f2b44;
+}
+
+@media print {
+  /* Hide standard screen elements when printing */
+  body > div:not(#print-mount-point),
+  .no-print,
+  aside,
+  header,
+  nav,
+  button,
+  .no-print-area {
+    display: none !important;
+  }
+
+  body * {
+    visibility: hidden;
+  }
+
+  .print-container,
+  .print-container * {
+    visibility: visible !important;
+  }
+
+  .print-container {
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 100% !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+    padding: 10px !important;
+    margin: 0 !important;
+    box-shadow: none !important;
+    border: none !important;
+  }
+
+  @page {
+    size: A4 portrait;
+    margin: 12mm;
+  }
+}
