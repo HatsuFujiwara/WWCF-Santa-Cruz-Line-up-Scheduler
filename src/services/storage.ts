@@ -2,13 +2,25 @@ import { Member, Schedule } from '../types';
 import { DEFAULT_LABELS, DEFAULT_MEMBERS, DEFAULT_SCHEDULES } from '../data/seedData';
 import { dataRepository } from './data';
 import { sortTags } from '../utils/tagUtils';
+import { getManilaNowISO } from '../utils/dateUtils';
+
+export type GuideAutoShowMode = 'first_visit' | 'every_time' | 'never';
+
+export type DraftSchedule = Partial<Schedule> & {
+  version?: number;
+  editingScheduleId?: string | null;
+  savedAt?: string;
+};
 
 const STORAGE_KEYS = {
   MEMBERS: 'wwcf_members_v1',
   LABELS: 'wwcf_labels_v1',
   SCHEDULES: 'wwcf_schedules_v1',
   DARK_MODE: 'wwcf_dark_mode_v1',
-  DRAFT: 'wwcf_draft_schedule_v1'
+  DRAFT_V2: 'wwcf_draft_schedule_v2',
+  DRAFT_V1: 'wwcf_draft_schedule_v1',
+  GUIDE_MODE: 'wwcf_guide_mode_v1',
+  GUIDE_VISITED: 'wwcf_guide_has_visited_v1'
 };
 
 const DEMO_MEMBER_IDS = new Set(['m1', 'm2', 'm3', 'm4', 'm5', 'm6', 'm7', 'm8']);
@@ -63,6 +75,7 @@ export function sanitizeSchedules(schedules: Schedule[]): Schedule[] {
   const nonDemoSchedules = (schedules || []).filter((sch) => sch.id !== 'sch_sample_1');
 
   return nonDemoSchedules.map((sch) => {
+    const validId = sch.id && sch.id.trim() !== '' ? sch.id : `sch_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
     const updatedAssignments = (sch.ministryAssignments || []).map((assignment) => {
       let role = assignment.role;
       if (role === 'Song Lead') role = 'Song Leader';
@@ -82,6 +95,7 @@ export function sanitizeSchedules(schedules: Schedule[]): Schedule[] {
     });
     return {
       ...sch,
+      id: validId,
       ministryAssignments: updatedAssignments
     };
   });
@@ -220,39 +234,148 @@ export class StorageService {
     }
   }
 
-  static getDraftScheduleSync(): Partial<Schedule> | null {
+  static getDraftScheduleSync(): DraftSchedule | null {
     try {
-      const data = localStorage.getItem(STORAGE_KEYS.DRAFT);
+      let data = localStorage.getItem(STORAGE_KEYS.DRAFT_V2);
+      if (!data) {
+        data = localStorage.getItem(STORAGE_KEYS.DRAFT_V1);
+      }
       if (!data) return null;
-      const draft: Partial<Schedule> = JSON.parse(data);
+      const draft = JSON.parse(data);
+      if (!draft) return null;
+
       if (draft.ministryAssignments) {
-        draft.ministryAssignments = (draft.ministryAssignments || []).map((a) => {
+        draft.ministryAssignments = (draft.ministryAssignments || []).map((a: any) => {
           let role = a.role;
           if (role === 'Song Lead') role = 'Song Leader';
           if (role === 'Multimedia') role = 'Lyricist';
           return { ...a, role };
         });
       }
-      return draft;
+      return {
+        version: 2,
+        editingScheduleId: draft.editingScheduleId !== undefined ? draft.editingScheduleId : (draft.id || null),
+        savedAt: draft.savedAt || getManilaNowISO(),
+        serviceType: draft.serviceType,
+        serviceDate: draft.serviceDate,
+        praiseSongs: draft.praiseSongs || [''],
+        worshipSongs: draft.worshipSongs || [''],
+        praiseSongKeys: draft.praiseSongKeys || [],
+        worshipSongKeys: draft.worshipSongKeys || [],
+        ministryAssignments: draft.ministryAssignments || [],
+        notes: draft.notes || ''
+      };
     } catch {
       return null;
     }
   }
 
-  static getDraftSchedule(): Partial<Schedule> | null {
+  static getDraftSchedule(): DraftSchedule | null {
     return this.getDraftScheduleSync();
   }
 
-  static saveDraftSchedule(draft: Partial<Schedule> | null): void {
+  static saveDraftSchedule(draft: DraftSchedule | null): void {
     try {
       if (!draft) {
-        localStorage.removeItem(STORAGE_KEYS.DRAFT);
+        localStorage.removeItem(STORAGE_KEYS.DRAFT_V2);
+        localStorage.removeItem(STORAGE_KEYS.DRAFT_V1);
       } else {
-        localStorage.setItem(STORAGE_KEYS.DRAFT, JSON.stringify(draft));
+        const fullDraft = {
+          version: 2,
+          editingScheduleId: draft.editingScheduleId !== undefined ? draft.editingScheduleId : null,
+          savedAt: getManilaNowISO(),
+          ...draft
+        };
+        const serialized = JSON.stringify(fullDraft);
+        localStorage.setItem(STORAGE_KEYS.DRAFT_V2, serialized);
       }
       dataRepository.saveDraftSchedule(draft);
     } catch (e) {
       console.error('Failed to save draft schedule', e);
+    }
+  }
+
+  static getOnboardingDisabled(): boolean {
+    return this.getGuideMode() === 'never';
+  }
+
+  static setOnboardingDisabled(disabled: boolean): void {
+    this.setGuideMode(disabled ? 'never' : 'first_visit');
+  }
+
+  static getGuideMode(): GuideAutoShowMode {
+    try {
+      const mode = localStorage.getItem(STORAGE_KEYS.GUIDE_MODE);
+      if (mode === 'first_visit' || mode === 'every_time' || mode === 'never') {
+        return mode as GuideAutoShowMode;
+      }
+      const legacyDisabled = localStorage.getItem('wwcf_onboarding_disabled');
+      if (legacyDisabled === 'true') {
+        return 'never';
+      }
+      return 'first_visit';
+    } catch {
+      return 'first_visit';
+    }
+  }
+
+  static setGuideMode(mode: GuideAutoShowMode): void {
+    try {
+      localStorage.setItem(STORAGE_KEYS.GUIDE_MODE, mode);
+      if (mode === 'never') {
+        localStorage.setItem('wwcf_onboarding_disabled', 'true');
+      } else {
+        localStorage.setItem('wwcf_onboarding_disabled', 'false');
+      }
+    } catch (e) {
+      console.error('Failed to save guide mode setting', e);
+    }
+  }
+
+  static hasVisitedBefore(): boolean {
+    try {
+      return localStorage.getItem(STORAGE_KEYS.GUIDE_VISITED) === 'true';
+    } catch {
+      return false;
+    }
+  }
+
+  static setHasVisitedBefore(visited: boolean): void {
+    try {
+      if (visited) {
+        localStorage.setItem(STORAGE_KEYS.GUIDE_VISITED, 'true');
+      } else {
+        localStorage.removeItem(STORAGE_KEYS.GUIDE_VISITED);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  }
+
+  static resetGuidePreferences(): void {
+    try {
+      localStorage.setItem(STORAGE_KEYS.GUIDE_MODE, 'first_visit');
+      localStorage.setItem('wwcf_onboarding_disabled', 'false');
+      localStorage.removeItem(STORAGE_KEYS.GUIDE_VISITED);
+      sessionStorage.removeItem('wwcf_onboarding_skipped_session');
+    } catch (e) {
+      console.error(e);
+    }
+  }
+
+  static getOnboardingSkippedSession(): boolean {
+    try {
+      return sessionStorage.getItem('wwcf_onboarding_skipped_session') === 'true';
+    } catch {
+      return false;
+    }
+  }
+
+  static setOnboardingSkippedSession(skipped: boolean): void {
+    try {
+      sessionStorage.setItem('wwcf_onboarding_skipped_session', skipped ? 'true' : 'false');
+    } catch (e) {
+      console.error(e);
     }
   }
 }

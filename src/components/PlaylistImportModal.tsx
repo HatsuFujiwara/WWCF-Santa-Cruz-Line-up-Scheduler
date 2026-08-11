@@ -155,27 +155,25 @@ export const PlaylistImportModal: React.FC<PlaylistImportModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fadeIn">
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl max-w-2xl w-full overflow-hidden flex flex-col max-h-[90vh]">
+      <div data-tour="import-modal-container" className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl max-w-2xl w-full overflow-hidden flex flex-col max-h-[90vh]">
         {/* Modal Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30">
           <div className="flex items-center gap-2.5">
-            <div className="p-2 bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 rounded-lg">
+            <div className="p-2 bg-red-50 dark:bg-red-950/60 text-red-600 dark:text-red-400 rounded-lg">
               <Youtube className="w-5 h-5 text-red-600" />
             </div>
             <div>
               <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">
-                {isEditing ? 'Edit Worship Line-up' : 'Create Service Line-up'}
+                Import YouTube / YouTube Music Playlist
               </h3>
               <p className="text-xs text-slate-500 dark:text-slate-400">
-                {isEditing
-                  ? 'Import YouTube / YouTube Music playlist into this line-up'
-                  : 'Choose how you want to build your worship schedule'}
+                Paste your YouTube or YouTube Music playlist link to import worship songs.
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg transition-colors"
+            className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg transition-colors cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
@@ -184,40 +182,7 @@ export const PlaylistImportModal: React.FC<PlaylistImportModalProps> = ({
         {/* Modal Body */}
         <div className="p-6 overflow-y-auto flex-1">
           {activeTab === 'url_input' && (
-            <div className="space-y-6">
-              {/* Option Selector Cards */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* Option 1: Blank */}
-                <button
-                  type="button"
-                  onClick={onSelectBlank}
-                  className="flex flex-col text-left p-5 bg-white dark:bg-slate-800 border-2 border-slate-200 dark:border-slate-700 hover:border-indigo-500 dark:hover:border-indigo-500 rounded-xl transition-all group shadow-sm hover:shadow-md"
-                >
-                  <div className="w-10 h-10 rounded-lg bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 flex items-center justify-center mb-3 group-hover:bg-indigo-50 dark:group-hover:bg-indigo-950/80 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
-                    <Plus className="w-5 h-5" />
-                  </div>
-                  <h4 className="text-sm font-semibold text-slate-900 dark:text-slate-100 mb-1">
-                    Option 1: Blank Line-up
-                  </h4>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">
-                    Start with a clean slate and manually search or add songs from your song database.
-                  </p>
-                </button>
-
-                {/* Option 2: Import Playlist */}
-                <div className="flex flex-col text-left p-5 bg-indigo-50/50 dark:bg-indigo-950/20 border-2 border-indigo-200 dark:border-indigo-800/60 rounded-xl">
-                  <div className="w-10 h-10 rounded-lg bg-indigo-100 dark:bg-indigo-900/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center mb-3">
-                    <ListMusic className="w-5 h-5" />
-                  </div>
-                  <h4 className="text-sm font-semibold text-slate-900 dark:text-slate-100 mb-1">
-                    Option 2: Import Playlist
-                  </h4>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">
-                    Paste a YouTube or YouTube Music playlist link to import all worship songs automatically.
-                  </p>
-                </div>
-              </div>
-
+            <div className="space-y-4">
               {/* URL Input Form */}
               <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-200 dark:border-slate-700/80 space-y-3">
                 <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
@@ -225,35 +190,44 @@ export const PlaylistImportModal: React.FC<PlaylistImportModalProps> = ({
                 </label>
                 <div className="relative">
                   <input
+                    data-tour="playlist-url-input"
                     type="url"
+                    autoFocus
                     value={playlistUrl}
                     onChange={(e) => setPlaylistUrl(e.target.value)}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter') handleFetchPreview();
                     }}
-                    placeholder="https://www.youtube.com/playlist?list=PL..."
-                    className="w-full pl-10 pr-24 py-2.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-sm text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all"
+                    placeholder="https://www.youtube.com/playlist?list=PL... or https://music.youtube.com/..."
+                    className="w-full pl-10 pr-32 py-2.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-sm text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all"
                   />
                   <Youtube className="w-5 h-5 text-red-500 absolute left-3 top-2.5" />
                   <button
                     type="button"
                     onClick={() => handleFetchPreview()}
                     disabled={isLoading || !playlistUrl.trim()}
-                    className="absolute right-1.5 top-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-md text-xs font-medium transition-colors flex items-center gap-1.5"
+                    className="absolute right-1.5 top-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-md text-xs font-medium transition-colors flex items-center gap-1.5 cursor-pointer"
                   >
                     {isLoading ? (
                       <>
                         <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                        <span>Fetching...</span>
+                        <span>Importing...</span>
                       </>
                     ) : (
                       <>
-                        <span>Fetch Playlist</span>
+                        <span>Import Playlist</span>
                         <ArrowRight className="w-3.5 h-3.5" />
                       </>
                     )}
                   </button>
                 </div>
+
+                {isLoading && (
+                  <div className="p-3 bg-indigo-50/80 dark:bg-indigo-950/60 border border-indigo-200 dark:border-indigo-800 rounded-lg text-xs text-indigo-800 dark:text-indigo-200 flex items-center gap-2">
+                    <Loader2 className="w-4 h-4 text-indigo-600 dark:text-indigo-400 animate-spin shrink-0" />
+                    <span>Importing playlist... Please wait.</span>
+                  </div>
+                )}
 
                 {errorMsg && (
                   <div className="p-3 bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-900 rounded-lg text-xs text-rose-600 dark:text-rose-400 flex items-start gap-2">
@@ -439,22 +413,15 @@ export const PlaylistImportModal: React.FC<PlaylistImportModalProps> = ({
         {/* Modal Footer */}
         <div className="flex items-center justify-between px-6 py-4 border-t border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30">
           {activeTab === 'url_input' && (
-            <>
+            <div className="flex items-center justify-between w-full">
               <button
                 type="button"
                 onClick={onClose}
-                className="px-4 py-2 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-slate-100 transition-colors"
+                className="px-4 py-2 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-slate-100 transition-colors cursor-pointer"
               >
                 Cancel
               </button>
-              <button
-                type="button"
-                onClick={onSelectBlank}
-                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 rounded-lg text-xs font-semibold transition-colors"
-              >
-                Start Blank Schedule
-              </button>
-            </>
+            </div>
           )}
 
           {activeTab === 'preview' && (
@@ -476,6 +443,7 @@ export const PlaylistImportModal: React.FC<PlaylistImportModalProps> = ({
                 </button>
                 <button
                   type="button"
+                  data-tour="import-submit-btn"
                   onClick={handleExecuteImport}
                   disabled={isImporting || selectedCount === 0}
                   className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5 shadow-sm"
@@ -499,6 +467,7 @@ export const PlaylistImportModal: React.FC<PlaylistImportModalProps> = ({
           {activeTab === 'summary' && (
             <button
               type="button"
+              data-tour="import-done-btn"
               onClick={onClose}
               className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold transition-colors shadow-sm"
             >

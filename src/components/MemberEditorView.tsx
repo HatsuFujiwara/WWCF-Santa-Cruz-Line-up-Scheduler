@@ -435,11 +435,11 @@ export const MemberEditorView: React.FC<MemberEditorViewProps> = ({
   };
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-300">
+    <div data-tour="members-view" className="space-y-6 animate-in fade-in duration-300">
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Add/Edit Form (1 col) */}
         <div className="lg:col-span-1 space-y-4">
-          <div className="p-6 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs space-y-5">
+          <div data-tour="member-form" className="p-6 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs space-y-5">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
               <h3 className="text-xs font-bold uppercase tracking-wider text-slate-800 dark:text-slate-200 flex items-center gap-2">
                 <UserPlus className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
@@ -464,6 +464,7 @@ export const MemberEditorView: React.FC<MemberEditorViewProps> = ({
                 </label>
                 <input
                   type="text"
+                  data-tour="member-name-input"
                   value={fullName}
                   onChange={(e) => setFullName(e.target.value)}
                   placeholder="e.g. Bro. John Reyes"
@@ -479,7 +480,7 @@ export const MemberEditorView: React.FC<MemberEditorViewProps> = ({
                   <span className="text-[10px] text-slate-400 font-normal normal-case">Select all that apply</span>
                 </label>
 
-                <div className="flex flex-wrap gap-1.5 p-3 rounded-lg bg-slate-50 dark:bg-slate-800/50 border border-slate-200/60 dark:border-slate-700/60 max-h-48 overflow-y-auto">
+                <div data-tour="member-tags-select" className="flex flex-wrap gap-1.5 p-3 rounded-lg bg-slate-50 dark:bg-slate-800/50 border border-slate-200/60 dark:border-slate-700/60 max-h-48 overflow-y-auto">
                   {sortTags(labels).map((label) => {
                     const isSelectedLabel = selectedLabels.includes(label);
                     return (
@@ -529,6 +530,7 @@ export const MemberEditorView: React.FC<MemberEditorViewProps> = ({
               <div className="pt-3">
                 <button
                   type="submit"
+                  data-tour="add-member-btn"
                   className="w-full py-2.5 px-4 text-xs sm:text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg shadow-xs transition-colors cursor-pointer"
                 >
                   {editingId ? 'Update Member' : 'Save Member to Roster'}
@@ -554,6 +556,7 @@ export const MemberEditorView: React.FC<MemberEditorViewProps> = ({
                   <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
                   <input
                     type="text"
+                    data-tour="member-search-input"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     placeholder="Search Members..."
@@ -583,6 +586,7 @@ export const MemberEditorView: React.FC<MemberEditorViewProps> = ({
                     </label>
                     <select
                       value={statusFilter}
+                      data-tour="member-filter-select"
                       onChange={(e) => setStatusFilter(e.target.value as MemberStatusFilter)}
                       className="px-2.5 py-1.5 text-xs font-semibold rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none cursor-pointer"
                     >
@@ -600,6 +604,7 @@ export const MemberEditorView: React.FC<MemberEditorViewProps> = ({
                     </label>
                     <select
                       value={sortOption}
+                      data-tour="member-sort-select"
                       onChange={(e) => handleSortChange(e.target.value as MemberSortOption)}
                       className="px-2.5 py-1.5 text-xs font-semibold rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none cursor-pointer"
                     >

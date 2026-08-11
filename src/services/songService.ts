@@ -78,12 +78,6 @@ export class SongService {
       if (data) {
         const parsed = JSON.parse(data);
         if (Array.isArray(parsed)) {
-          // Clear legacy seed songs if present
-          const legacySeedIds = new Set(['s1', 's2', 's3', 's4', 's5', 's6', 's7', 's8']);
-          if (parsed.length > 0 && parsed.every((s: Song) => legacySeedIds.has(s.id))) {
-            localStorage.setItem(SONGS_STORAGE_KEY, JSON.stringify([]));
-            return [];
-          }
           return parsed;
         }
       }

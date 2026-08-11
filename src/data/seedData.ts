@@ -10,6 +10,7 @@ export const DEFAULT_LABELS = [
   'Keyboardist',
   'Bassist',
   'Drummer',
+  'Audio/Live Technician',
   'Lyricist'
 ];
 
@@ -22,7 +23,8 @@ export const DEFAULT_MINISTRY_ROLES = [
   { id: 'role-4', role: 'Keyboardist', defaultTarget: 'Keyboardist' },
   { id: 'role-5', role: 'Bassist', defaultTarget: 'Bassist' },
   { id: 'role-6', role: 'Drummer', defaultTarget: 'Drummer' },
-  { id: 'role-7', role: 'Lyricist', defaultTarget: 'Lyricist' }
+  { id: 'role-7', role: 'Audio/Live Technician', defaultTarget: 'Audio/Live Technician' },
+  { id: 'role-8', role: 'Lyricist', defaultTarget: 'Lyricist' }
 ];
 
 export const DEFAULT_SCHEDULES: Schedule[] = [];

@@ -12,10 +12,15 @@ import { MemberEditorView } from './components/MemberEditorView';
 import { ToastContainer } from './components/ToastContainer';
 import { Modal } from './components/Modal';
 import { BackupRestoreModal } from './components/BackupRestoreModal';
+import { OnboardingModal } from './components/OnboardingModal';
+import { SettingsModal } from './components/SettingsModal';
+import { HelpMenuModal } from './components/HelpMenuModal';
+import { InteractiveTourOverlay } from './components/InteractiveTourOverlay';
+import { WelcomeGuideModal } from './components/WelcomeGuideModal';
 import { exportLineupAsPDF, exportLineupAsPNG } from './services/exportService';
 import { sortTags } from './utils/tagUtils';
 import { getManilaNowISO, getManilaTodayString } from './utils/dateUtils';
-import { getNextAvailableServiceDate, getSmartInitialServiceDetails, ensureMonthlyPlaceholders, isScheduleEmpty } from './utils/scheduleUtils';
+import { getNextAvailableServiceDate, getSmartInitialServiceDetails, ensureMonthlyPlaceholders, isScheduleEmpty, refreshSchedulesWithMembers } from './utils/scheduleUtils';
 
 export default function App() {
   // Navigation & UI state
@@ -84,6 +89,31 @@ export default function App() {
   // Backup & Restore Modal state
   const [isBackupModalOpen, setIsBackupModalOpen] = useState(false);
 
+  // Settings, Welcome & Onboarding Modals
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isWelcomeModalOpen, setIsWelcomeModalOpen] = useState(false);
+  const [isOnboardingOpen, setIsOnboardingOpen] = useState(false);
+  const [isHelpMenuOpen, setIsHelpMenuOpen] = useState(false);
+  const [guideInitialStep, setGuideInitialStep] = useState(1);
+
+  useEffect(() => {
+    const mode = StorageService.getGuideMode();
+    const skippedSession = StorageService.getOnboardingSkippedSession();
+
+    if (skippedSession || mode === 'never') {
+      return;
+    }
+
+    if (mode === 'every_time') {
+      setIsWelcomeModalOpen(true);
+    } else if (mode === 'first_visit') {
+      const hasVisited = StorageService.hasVisitedBefore();
+      if (!hasVisited) {
+        setIsWelcomeModalOpen(true);
+      }
+    }
+  }, []);
+
   const handleReloadAllData = () => {
     setMembers(StorageService.getMembers());
     setLabels(StorageService.getLabels());
@@ -116,6 +146,36 @@ export default function App() {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   };
 
+  // Refresh All Saved Line-ups using current member database and hierarchy
+  const handleRefreshLineups = () => {
+    try {
+      const currentSchedules = StorageService.getSchedules();
+      const currentMembers = StorageService.getMembers();
+
+      const { refreshedSchedules, updatedCount } = refreshSchedulesWithMembers(
+        currentSchedules,
+        currentMembers
+      );
+
+      if (refreshedSchedules && refreshedSchedules.length > 0) {
+        StorageService.saveSchedules(refreshedSchedules);
+        setSchedules(refreshedSchedules);
+      }
+
+      if (updatedCount > 0) {
+        showToast(
+          `Line-ups refreshed successfully. ${updatedCount} line-up${updatedCount > 1 ? 's' : ''} updated.`,
+          'success'
+        );
+      } else {
+        showToast('Line-ups are already up to date.', 'info');
+      }
+    } catch (error) {
+      console.error('Failed to refresh line-ups:', error);
+      showToast('Failed to refresh line-ups. Original data preserved.', 'danger');
+    }
+  };
+
   // Schedule Operations
   const handleSaveSchedule = (
     scheduleData: Omit<Schedule, 'id' | 'updatedAt'>,
@@ -123,18 +183,12 @@ export default function App() {
   ) => {
     let updatedSchedules: Schedule[];
 
-    // Match existing schedule by ID or by serviceType & serviceDate
-    const existingSchedule = id
-      ? schedules.find((s) => s.id === id)
-      : schedules.find(
-          (s) =>
-            s.serviceType === scheduleData.serviceType &&
-            s.serviceDate === scheduleData.serviceDate
-        );
+    // Match existing schedule strictly by ID
+    const targetId = id && !id.startsWith('placeholder_') ? id : null;
+    const existingIndex = targetId ? schedules.findIndex((s) => s.id === targetId) : -1;
 
-    const targetId = id || existingSchedule?.id;
-
-    if (targetId) {
+    if (existingIndex >= 0 && targetId) {
+      // Update existing schedule record
       updatedSchedules = schedules.map((s) =>
         s.id === targetId
           ? { ...scheduleData, id: targetId, updatedAt: getManilaNowISO() }
@@ -142,12 +196,20 @@ export default function App() {
       );
       showToast('Worship schedule saved successfully!', 'success');
     } else {
+      // Create brand new schedule with unique ID
+      const newId = `sch_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
       const newSchedule: Schedule = {
         ...scheduleData,
-        id: `sch_${Date.now()}`,
+        id: newId,
         updatedAt: getManilaNowISO()
       };
-      updatedSchedules = [newSchedule, ...schedules];
+
+      // If replacing a placeholder, remove placeholder and insert new schedule
+      if (id && id.startsWith('placeholder_')) {
+        updatedSchedules = [newSchedule, ...schedules.filter((s) => s.id !== id)];
+      } else {
+        updatedSchedules = [newSchedule, ...schedules];
+      }
       showToast('New worship schedule saved to history!', 'success');
     }
 
@@ -311,12 +373,8 @@ export default function App() {
   };
 
   const handleNewScheduleClick = () => {
-    const smartInit = getSmartInitialServiceDetails(schedules);
-    if (smartInit.existingSchedule) {
-      setEditingSchedule(smartInit.existingSchedule);
-    } else {
-      setEditingSchedule(null);
-    }
+    setEditingSchedule(null);
+    StorageService.saveDraftSchedule(null);
     setActiveTab('scheduler');
   };
 
@@ -331,6 +389,9 @@ export default function App() {
         isOpen={isMobileMenuOpen}
         setIsOpen={setIsMobileMenuOpen}
         onOpenBackupRestore={() => setIsBackupModalOpen(true)}
+        onOpenSettings={() => setIsSettingsOpen(true)}
+        onOpenHelp={() => setIsHelpMenuOpen(true)}
+        onRefreshLineups={handleRefreshLineups}
       />
 
       {/* Main Content Area */}
@@ -342,6 +403,9 @@ export default function App() {
           isDraftSaved={isDraftSaved}
           onNewSchedule={handleNewScheduleClick}
           onOpenBackupRestore={() => setIsBackupModalOpen(true)}
+          onOpenSettings={() => setIsSettingsOpen(true)}
+          onOpenHelp={() => setIsHelpMenuOpen(true)}
+          onRefreshLineups={handleRefreshLineups}
         />
 
         <main className="flex-1 p-4 sm:p-8 max-w-7xl w-full mx-auto">
@@ -369,6 +433,7 @@ export default function App() {
               showToast={showToast}
               onSelectSchedule={handleEditScheduleFromList}
               onViewSchedules={() => setActiveTab('schedules')}
+              onRefreshLineups={handleRefreshLineups}
             />
           )}
 
@@ -392,6 +457,7 @@ export default function App() {
               onExportPDF={handleExportPDF}
               onExportPNG={handleExportPNG}
               onUpdateSchedules={handleUpdateSchedules}
+              onRefreshLineups={handleRefreshLineups}
             />
           )}
 
@@ -421,6 +487,50 @@ export default function App() {
         labels={labels}
         onDataRestored={handleReloadAllData}
         showToast={showToast}
+      />
+
+      {/* Settings Modal */}
+      <SettingsModal
+        isOpen={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
+        isDarkMode={isDarkMode}
+        setIsDarkMode={setIsDarkMode}
+        onOpenOnboarding={() => {
+          setGuideInitialStep(1);
+          setIsOnboardingOpen(true);
+        }}
+        onOpenBackupRestore={() => setIsBackupModalOpen(true)}
+        showToast={showToast}
+      />
+
+      {/* Welcome Guide Greeting Modal */}
+      <WelcomeGuideModal
+        isOpen={isWelcomeModalOpen}
+        onClose={() => setIsWelcomeModalOpen(false)}
+        onStartGuide={() => {
+          setGuideInitialStep(1);
+          setIsOnboardingOpen(true);
+        }}
+        showToast={showToast}
+      />
+
+      {/* Help Menu Modal */}
+      <HelpMenuModal
+        isOpen={isHelpMenuOpen}
+        onClose={() => setIsHelpMenuOpen(false)}
+        onSelectSection={(stepId) => {
+          setGuideInitialStep(stepId);
+          setIsOnboardingOpen(true);
+        }}
+      />
+
+      {/* Interactive Guided Tour Overlay */}
+      <InteractiveTourOverlay
+        isOpen={isOnboardingOpen}
+        onClose={() => setIsOnboardingOpen(false)}
+        activeTab={activeTab}
+        setActiveTab={setActiveTab}
+        initialStep={guideInitialStep}
       />
 
       {/* Confirmation Modal */}

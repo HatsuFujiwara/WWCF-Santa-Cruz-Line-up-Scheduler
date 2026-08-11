@@ -56,15 +56,23 @@ export const SongAutocomplete: React.FC<SongAutocompleteProps> = ({
     const catMatch = song.category === category || song.category === 'both';
     if (!catMatch) return false;
 
-    if (!query.trim()) return true; // Show top matches when blank
-    const q = query.trim().toLowerCase();
-    return (
-      song.title.toLowerCase().includes(q) ||
-      song.artist.toLowerCase().includes(q) ||
-      (song.key && song.key.toLowerCase().includes(q)) ||
-      (song.language && song.language.toLowerCase().includes(q))
+    const cleanQuery = query.trim().toLowerCase().replace(/\s+/g, ' ');
+    if (!cleanQuery) return true; // Show top matches when blank
+
+    const titleLower = song.title.toLowerCase();
+    const artistLower = song.artist.toLowerCase();
+    const keyLower = (song.key || '').toLowerCase();
+    const langLower = (song.language || '').toLowerCase();
+
+    const terms = cleanQuery.split(' ');
+    return terms.every(
+      (term) =>
+        titleLower.includes(term) ||
+        artistLower.includes(term) ||
+        keyLower.includes(term) ||
+        langLower.includes(term)
     );
-  }).slice(0, 8); // Top 8 suggestions
+  }).slice(0, 10); // Top 10 suggestions
 
   const handleSelectSong = (song: Song) => {
     onChange(song.title);

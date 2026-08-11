@@ -77,6 +77,18 @@ export function isMemberUnderDisciplinary(member: Member, referenceDateStr?: str
   return true;
 }
 
+export type PredefinedMinistryTag =
+  | 'Pastor'
+  | 'Worship Leader'
+  | 'Song Leader'
+  | 'Vocalist'
+  | 'Guitarist'
+  | 'Keyboardist'
+  | 'Bassist'
+  | 'Drummer'
+  | 'Audio/Live Technician'
+  | 'Lyricist';
+
 export interface AssignedMember {
   memberId: string;
   memberName: string;

@@ -24,7 +24,8 @@ import {
   Mic2,
   ChevronDown,
   ChevronUp,
-  Tag
+  Tag,
+  X
 } from 'lucide-react';
 
 interface SongsViewProps {
@@ -89,17 +90,27 @@ export const SongsView: React.FC<SongsViewProps> = ({
       return false;
     }
 
-    // Search query
+    // Search query with robust multi-term matching
     if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      return (
-        s.title.toLowerCase().includes(q) ||
-        s.artist.toLowerCase().includes(q) ||
-        (s.key && s.key.toLowerCase().includes(q)) ||
-        (s.ccliNumber && s.ccliNumber.toLowerCase().includes(q)) ||
-        (s.notes && s.notes.toLowerCase().includes(q)) ||
-        (s.themes && s.themes.some((t) => t.toLowerCase().includes(q))) ||
-        (s.labels && s.labels.some((l) => l.toLowerCase().includes(q)))
+      const cleanQ = searchQuery.trim().toLowerCase().replace(/\s+/g, ' ');
+      const terms = cleanQ.split(' ');
+      const titleLower = s.title.toLowerCase();
+      const artistLower = s.artist.toLowerCase();
+      const keyLower = (s.key || '').toLowerCase();
+      const ccliLower = (s.ccliNumber || '').toLowerCase();
+      const notesLower = (s.notes || '').toLowerCase();
+      const themesLower = (s.themes || []).map((t) => t.toLowerCase());
+      const labelsLower = (s.labels || []).map((l) => l.toLowerCase());
+
+      return terms.every(
+        (term) =>
+          titleLower.includes(term) ||
+          artistLower.includes(term) ||
+          keyLower.includes(term) ||
+          ccliLower.includes(term) ||
+          notesLower.includes(term) ||
+          themesLower.some((t) => t.includes(term)) ||
+          labelsLower.some((l) => l.includes(term))
       );
     }
 
@@ -208,7 +219,7 @@ export const SongsView: React.FC<SongsViewProps> = ({
   const worshipCount = songs.filter((s) => s.category === 'worship' || s.category === 'both').length;
 
   return (
-    <div className="space-y-6">
+    <div data-tour="songs-view" className="space-y-6">
       
       {/* View Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-200 dark:border-slate-800">
@@ -225,6 +236,7 @@ export const SongsView: React.FC<SongsViewProps> = ({
         <div className="flex items-center gap-2 shrink-0">
           <button
             onClick={() => setIsImportModalOpen(true)}
+            data-tour="playlist-import-btn"
             className="inline-flex items-center gap-2 px-3.5 py-2.5 text-xs font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/80 hover:bg-indigo-100 dark:hover:bg-indigo-900/80 border border-indigo-200/80 dark:border-indigo-800/80 rounded-xl transition-colors cursor-pointer"
           >
             <Youtube className="w-4 h-4 text-red-500" />
@@ -236,6 +248,7 @@ export const SongsView: React.FC<SongsViewProps> = ({
               setEditingSong(null);
               setIsModalOpen(true);
             }}
+            data-tour="add-song-btn"
             className="inline-flex items-center gap-2 px-4 py-2.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-xs transition-colors cursor-pointer"
           >
             <Plus className="w-4 h-4" />
@@ -284,69 +297,82 @@ export const SongsView: React.FC<SongsViewProps> = ({
       </div>
 
       {/* Search & Filter Toolbar */}
-      <div className="flex flex-col md:flex-row items-center gap-3 p-3 rounded-xl bg-white dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700/80 shadow-xs">
+      <div className="flex flex-col md:flex-row items-stretch md:items-center gap-3 p-3.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700/80 shadow-xs">
         
         {/* Search Bar */}
         <div className="relative flex-1 w-full">
           <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
           <input
             type="text"
+            data-tour="song-search-input"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search by song title, artist, key, CCLI..."
-            className="w-full pl-9 pr-3 py-2 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none"
+            className="w-full pl-9 pr-8 py-2.5 text-xs sm:text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all"
           />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery('')}
+              className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-0.5 rounded-full cursor-pointer"
+              title="Clear search"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
         </div>
 
-        {/* Category Pills */}
-        <div className="flex items-center gap-1 w-full md:w-auto">
-          <button
-            onClick={() => setCategoryFilter('all')}
-            className={`px-3 py-1.5 text-xs font-bold rounded-lg cursor-pointer transition-colors ${
-              categoryFilter === 'all'
-                ? 'bg-indigo-600 text-white'
-                : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-200'
-            }`}
-          >
-            All
-          </button>
-          <button
-            onClick={() => setCategoryFilter('praise')}
-            className={`px-3 py-1.5 text-xs font-bold rounded-lg cursor-pointer transition-colors ${
-              categoryFilter === 'praise'
-                ? 'bg-emerald-600 text-white'
-                : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-200'
-            }`}
-          >
-            Praise
-          </button>
-          <button
-            onClick={() => setCategoryFilter('worship')}
-            className={`px-3 py-1.5 text-xs font-bold rounded-lg cursor-pointer transition-colors ${
-              categoryFilter === 'worship'
-                ? 'bg-indigo-600 text-white'
-                : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-200'
-            }`}
-          >
-            Worship
-          </button>
-        </div>
+        {/* Category Pills & Filters Group */}
+        <div className="flex flex-wrap sm:flex-nowrap items-center gap-2 w-full md:w-auto">
+          {/* Category Pills */}
+          <div className="flex items-center gap-1 flex-1 sm:flex-initial">
+            <button
+              onClick={() => setCategoryFilter('all')}
+              className={`flex-1 sm:flex-initial px-3.5 py-2 text-xs font-bold rounded-lg cursor-pointer transition-colors min-h-[38px] flex items-center justify-center ${
+                categoryFilter === 'all'
+                  ? 'bg-indigo-600 text-white'
+                  : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-200'
+              }`}
+            >
+              All
+            </button>
+            <button
+              onClick={() => setCategoryFilter('praise')}
+              className={`flex-1 sm:flex-initial px-3.5 py-2 text-xs font-bold rounded-lg cursor-pointer transition-colors min-h-[38px] flex items-center justify-center ${
+                categoryFilter === 'praise'
+                  ? 'bg-emerald-600 text-white'
+                  : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-200'
+              }`}
+            >
+              Praise
+            </button>
+            <button
+              onClick={() => setCategoryFilter('worship')}
+              className={`flex-1 sm:flex-initial px-3.5 py-2 text-xs font-bold rounded-lg cursor-pointer transition-colors min-h-[38px] flex items-center justify-center ${
+                categoryFilter === 'worship'
+                  ? 'bg-indigo-600 text-white'
+                  : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-200'
+              }`}
+            >
+              Worship
+            </button>
+          </div>
 
-        {/* Language Filter */}
-        <select
-          value={languageFilter}
-          onChange={(e) => setLanguageFilter(e.target.value)}
-          className="px-3 py-2 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-slate-100 outline-none w-full md:w-auto"
-        >
-          <option value="all">All Languages</option>
-          <option value="English">English</option>
-          <option value="Tagalog">Tagalog</option>
-          <option value="Cebuano">Cebuano</option>
-        </select>
+          {/* Language Filter */}
+          <select
+            value={languageFilter}
+            onChange={(e) => setLanguageFilter(e.target.value)}
+            className="px-3 py-2 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-slate-100 outline-none w-full sm:w-auto min-h-[38px]"
+          >
+            <option value="all">All Languages</option>
+            <option value="English">English</option>
+            <option value="Tagalog">Tagalog</option>
+            <option value="Cebuano">Cebuano</option>
+          </select>
+        </div>
       </div>
 
       {/* Bulk Actions & Selection Bar */}
-      <div className="flex flex-wrap items-center justify-between gap-3 p-3 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700">
+      <div data-tour="song-bulk-actions" className="flex flex-wrap items-center justify-between gap-3 p-3 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700">
         <div className="flex items-center gap-3">
           <label className="inline-flex items-center gap-2 text-xs font-bold text-slate-700 dark:text-slate-300 cursor-pointer select-none">
             <input

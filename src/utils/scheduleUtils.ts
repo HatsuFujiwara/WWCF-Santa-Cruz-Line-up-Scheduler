@@ -1,4 +1,4 @@
-import { Schedule, ServiceType } from '../types';
+import { Schedule, ServiceType, Member, AssignedMember, MinistryAssignment, getAssignmentMembers } from '../types';
 import { getManilaTodayString, getManilaDateParts, addDaysToDateString, getManilaNowISO } from './dateUtils';
 
 export interface RepeatedOccurrence {
@@ -414,4 +414,278 @@ export function ensureMonthlyPlaceholders(
   const combined = [...existingSchedules, ...newPlaceholders];
   combined.sort((a, b) => (b.serviceDate || '').localeCompare(a.serviceDate || ''));
   return combined;
+}
+
+/**
+  * Assigns a hierarchy rank to a ministry role name to enforce standard ordering:
+  * 1. Pastor
+  * 2. Worship Leader
+  * 3. Song Leader
+  * 4. Vocalist / Backup Singer
+  * 5. Guitarist
+  * 6. Keyboardist
+  * 7. Bassist
+  * 8. Drummer
+  * 9. Audio/Live Technician (rank 9, immediately above Lyricist)
+  * 10. Lyricist (rank 10)
+  */
+export function getMinistryRoleRank(roleName: string): number {
+  const lower = (roleName || '').toLowerCase().trim();
+  if (lower.includes('pastor')) return 1;
+  if (lower.includes('worship leader')) return 2;
+  if (lower.includes('song leader')) return 3;
+  if (lower.includes('vocalist') || lower.includes('backup') || lower.includes('singer')) return 4;
+  if (lower.includes('guitarist')) return 5;
+  if (lower.includes('keyboardist')) return 6;
+  if (lower.includes('bassist')) return 7;
+  if (lower.includes('drummer')) return 8;
+  if (lower.includes('audio') || lower.includes('technician') || lower.includes('live tech')) return 9;
+  if (lower.includes('lyricist') || lower.includes('multimedia')) return 10;
+  return 99;
+}
+
+/**
+  * Maps a member tag string to its standard ministry role name if applicable.
+  * Special roles (Song Leader split rows, Vocalist/Backup Singers) return null
+  * to preserve existing dedicated song leader / backup singer logic.
+  */
+export function mapTagToStandardRole(tag: string): string | null {
+  if (!tag) return null;
+  const lower = tag.trim().toLowerCase();
+  if (lower === 'pastor') return 'Pastor';
+  if (lower === 'worship leader') return 'Worship Leader';
+  if (lower === 'guitarist') return 'Guitarist';
+  if (lower === 'keyboardist') return 'Keyboardist';
+  if (lower === 'bassist') return 'Bassist';
+  if (lower === 'drummer') return 'Drummer';
+  if (
+    lower === 'audio/live technician' ||
+    lower === 'audio technician' ||
+    lower === 'sound tech' ||
+    lower === 'sound technician' ||
+    lower === 'live tech' ||
+    lower === 'technician'
+  ) {
+    return 'Audio/Live Technician';
+  }
+  if (
+    lower === 'lyricist' ||
+    lower === 'multimedia' ||
+    lower === 'lyrics' ||
+    lower === 'projector'
+  ) {
+    return 'Lyricist';
+  }
+  return null;
+}
+
+/**
+  * Refreshes all saved schedules using the current member database, member tags, and hierarchy.
+  * Synchronizes existing lineup members with their current member tags, creating missing standard
+  * ministry rows when appropriate without introducing duplicates or removing historical records.
+  * Preserves existing assignments, unique IDs, songs, dates, and form states.
+  * Idempotent and non-destructive.
+  */
+export function refreshSchedulesWithMembers(
+  currentSchedules: Schedule[],
+  currentMembers: Member[]
+): {
+  refreshedSchedules: Schedule[];
+  updatedCount: number;
+} {
+  if (!currentSchedules || currentSchedules.length === 0) {
+    return { refreshedSchedules: [], updatedCount: 0 };
+  }
+
+  // 1. Build lookup maps for current members
+  const memberById = new Map<string, Member>();
+  const memberByName = new Map<string, Member>();
+
+  (currentMembers || []).forEach((m) => {
+    if (m.id) {
+      memberById.set(m.id, m);
+    }
+    if (m.name) {
+      const normName = m.name.trim().toLowerCase();
+      if (!memberByName.has(normName)) {
+        memberByName.set(normName, m);
+      }
+    }
+  });
+
+  let updatedCount = 0;
+
+  const refreshedSchedules = currentSchedules.map((sch) => {
+    // Ignore unedited placeholder schedules
+    if (sch.id && sch.id.startsWith('placeholder_') && isScheduleEmpty(sch)) {
+      return sch;
+    }
+
+    let scheduleChanged = false;
+
+    // Step A: Process and refresh existing ministry assignments
+    const rawAssignments = sch.ministryAssignments || [];
+    const assignedMembersMap = new Map<string, Member>();
+
+    const refreshedAssignments: MinistryAssignment[] = rawAssignments.map((assignment) => {
+      // Standardize role names
+      let role = assignment.role || '';
+      if (role === 'Song Lead') role = 'Song Leader';
+      if (role === 'Multimedia') role = 'Lyricist';
+
+      const existingMembers = getAssignmentMembers(assignment);
+      const refreshedAssigned: AssignedMember[] = [];
+      const seenInRow = new Set<string>();
+
+      existingMembers.forEach((am) => {
+        const rawName = (am.memberName || '').trim();
+        const rawId = (am.memberId || '').trim();
+
+        if (!rawName || rawName === 'Unassigned' || rawName === '—' || rawName === 'N/A') {
+          if (existingMembers.length === 1) {
+            refreshedAssigned.push({ memberId: '', memberName: '' });
+          }
+          return;
+        }
+
+        // Match against current members by stable ID first, then by exact Name
+        let matchedMember: Member | undefined;
+        if (rawId && memberById.has(rawId)) {
+          matchedMember = memberById.get(rawId);
+        } else if (rawName && memberByName.has(rawName.toLowerCase())) {
+          matchedMember = memberByName.get(rawName.toLowerCase());
+        }
+
+        let updatedId = rawId;
+        let updatedName = rawName;
+
+        if (matchedMember) {
+          updatedId = matchedMember.id;
+          updatedName = matchedMember.name;
+          assignedMembersMap.set(matchedMember.id, matchedMember);
+        }
+
+        // Intra-row deduplication to prevent duplicate names in the exact same role row
+        const rowKey = updatedId ? `id:${updatedId}` : `name:${updatedName.toLowerCase()}`;
+        if (!seenInRow.has(rowKey)) {
+          seenInRow.add(rowKey);
+          refreshedAssigned.push({
+            memberId: updatedId,
+            memberName: updatedName
+          });
+        }
+      });
+
+      // Check if assignment role name or assigned member metadata was updated
+      const wasRoleChanged = role !== assignment.role;
+      const originalAssignedJson = JSON.stringify(assignment.assignedMembers || []);
+      const newAssignedJson = JSON.stringify(refreshedAssigned);
+      const wasAssignedChanged = originalAssignedJson !== newAssignedJson;
+
+      if (wasRoleChanged || wasAssignedChanged) {
+        scheduleChanged = true;
+      }
+
+      const updatedAssignmentObj: MinistryAssignment = {
+        ...assignment,
+        role,
+        assignedMembers: refreshedAssigned
+      };
+
+      if (refreshedAssigned.length > 0) {
+        updatedAssignmentObj.memberId = refreshedAssigned[0].memberId;
+        updatedAssignmentObj.memberName = refreshedAssigned[0].memberName;
+      }
+
+      return updatedAssignmentObj;
+    });
+
+    // Step B: Synchronize assigned members' current tags with ministry assignments
+    // For every member already assigned in this schedule, check their current tags in the database
+    assignedMembersMap.forEach((matchedMember) => {
+      const labels = matchedMember.labels || [];
+      labels.forEach((tag) => {
+        const targetRole = mapTagToStandardRole(tag);
+        if (!targetRole) return; // Skip non-standard or special roles (Song Leader / Vocalist)
+
+        // Find if a row corresponding to targetRole already exists
+        const existingRowIndex = refreshedAssignments.findIndex((row) => {
+          const stdRole = mapTagToStandardRole(row.role) || row.role;
+          return stdRole.trim().toLowerCase() === targetRole.toLowerCase();
+        });
+
+        if (existingRowIndex >= 0) {
+          const existingRow = refreshedAssignments[existingRowIndex];
+          const membersInRow = existingRow.assignedMembers || [];
+
+          // Check if member is already assigned in this row
+          const isAlreadyInRow = membersInRow.some(
+            (am) =>
+              (am.memberId && am.memberId === matchedMember.id) ||
+              (am.memberName && am.memberName.trim().toLowerCase() === matchedMember.name.trim().toLowerCase())
+          );
+
+          if (!isAlreadyInRow) {
+            // Remove empty unassigned placeholder if present
+            const cleanMembers = membersInRow.filter(
+              (am) => am.memberName && am.memberName !== 'Unassigned' && am.memberName !== '—' && am.memberName !== 'N/A'
+            );
+            cleanMembers.push({
+              memberId: matchedMember.id,
+              memberName: matchedMember.name
+            });
+
+            refreshedAssignments[existingRowIndex] = {
+              ...existingRow,
+              assignedMembers: cleanMembers,
+              memberId: cleanMembers[0]?.memberId || '',
+              memberName: cleanMembers[0]?.memberName || ''
+            };
+            scheduleChanged = true;
+          }
+        } else {
+          // Row does NOT exist in this lineup -> Create missing standard ministry assignment row
+          const newRow: MinistryAssignment = {
+            id: `assignment_ref_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+            role: targetRole,
+            assignedMembers: [
+              {
+                memberId: matchedMember.id,
+                memberName: matchedMember.name
+              }
+            ],
+            memberId: matchedMember.id,
+            memberName: matchedMember.name
+          };
+
+          refreshedAssignments.push(newRow);
+          scheduleChanged = true;
+        }
+      });
+    });
+
+    // Step C: Sort ministry assignments by standard role hierarchy
+    const sortedAssignments = [...refreshedAssignments].sort((a, b) => {
+      const rankA = getMinistryRoleRank(a.role);
+      const rankB = getMinistryRoleRank(b.role);
+      return rankA - rankB;
+    });
+
+    // Check if sorting or row creation altered assignment row order or structure
+    if (JSON.stringify(rawAssignments) !== JSON.stringify(sortedAssignments)) {
+      scheduleChanged = true;
+    }
+
+    if (scheduleChanged) {
+      updatedCount++;
+    }
+
+    return {
+      ...sch,
+      ministryAssignments: sortedAssignments,
+      updatedAt: scheduleChanged ? getManilaNowISO() : sch.updatedAt
+    };
+  });
+
+  return { refreshedSchedules, updatedCount };
 }

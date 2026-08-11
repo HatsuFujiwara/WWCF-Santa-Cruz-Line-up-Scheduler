@@ -90,19 +90,28 @@ export function filterAndSortMembers(
   searchQuery: string,
   filterLabels: string[],
   sortOption: MemberSortOption,
-  statusFilter: MemberStatusFilter = 'all'
+  statusFilter: MemberStatusFilter = 'all',
+  referenceDateStr?: string
 ): Member[] {
   const query = searchQuery.trim().toLowerCase();
-  const today = getManilaTodayString();
+  const dateToCheck = referenceDateStr || getManilaTodayString();
 
   const filtered = members.filter((member) => {
     // 1. Search Query filter (matches Name, Labels, or Disciplinary Reason)
+    const cleanQ = query.replace(/\s+/g, ' ');
+    const terms = cleanQ.split(' ');
+    const nameLower = member.name.toLowerCase();
+    const labelsLower = (member.labels || []).map((l) => l.toLowerCase());
+    const reasonLower = (member.disciplinaryAction?.reason || '').toLowerCase();
+
     const matchesSearch =
-      !query ||
-      member.name.toLowerCase().includes(query) ||
-      member.labels.some((l) => l.toLowerCase().includes(query)) ||
-      (member.disciplinaryAction?.reason &&
-        member.disciplinaryAction.reason.toLowerCase().includes(query));
+      !cleanQ ||
+      terms.every(
+        (term) =>
+          nameLower.includes(term) ||
+          labelsLower.some((l) => l.includes(term)) ||
+          reasonLower.includes(term)
+      );
 
     if (!matchesSearch) return false;
 
@@ -115,7 +124,7 @@ export function filterAndSortMembers(
     }
 
     // 3. Member Status Filter
-    const isDisciplinary = isMemberUnderDisciplinary(member, today);
+    const isDisciplinary = isMemberUnderDisciplinary(member, dateToCheck);
     if (statusFilter === 'active' && isDisciplinary) return false;
     if (statusFilter === 'disciplinary' && !isDisciplinary) return false;
 
@@ -128,15 +137,15 @@ export function filterAndSortMembers(
     const nameB = b.name.trim();
 
     if (sortOption === 'status-desc') {
-      const dispA = isMemberUnderDisciplinary(a, today) ? 1 : 0;
-      const dispB = isMemberUnderDisciplinary(b, today) ? 1 : 0;
+      const dispA = isMemberUnderDisciplinary(a, dateToCheck) ? 1 : 0;
+      const dispB = isMemberUnderDisciplinary(b, dateToCheck) ? 1 : 0;
       if (dispA !== dispB) return dispB - dispA; // Disciplinary first
       return nameA.localeCompare(nameB, undefined, { numeric: true, sensitivity: 'base' });
     }
 
     if (sortOption === 'status-asc') {
-      const dispA = isMemberUnderDisciplinary(a, today) ? 1 : 0;
-      const dispB = isMemberUnderDisciplinary(b, today) ? 1 : 0;
+      const dispA = isMemberUnderDisciplinary(a, dateToCheck) ? 1 : 0;
+      const dispB = isMemberUnderDisciplinary(b, dateToCheck) ? 1 : 0;
       if (dispA !== dispB) return dispA - dispB; // Active first
       return nameA.localeCompare(nameB, undefined, { numeric: true, sensitivity: 'base' });
     }

@@ -169,6 +169,7 @@ export const BackupRestoreModal: React.FC<BackupRestoreModalProps> = ({
             </p>
             <button
               type="button"
+              data-tour="download-backup-btn"
               onClick={handleDownloadBackup}
               className="w-full py-2 px-4 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs rounded-xl shadow-2xs transition-colors cursor-pointer flex items-center justify-center gap-2"
             >
@@ -195,6 +196,7 @@ export const BackupRestoreModal: React.FC<BackupRestoreModalProps> = ({
             />
             <button
               type="button"
+              data-tour="restore-file-btn"
               onClick={() => fileInputRef.current?.click()}
               className="w-full py-2 px-4 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-700 font-semibold text-xs rounded-xl transition-colors cursor-pointer flex items-center justify-center gap-2"
             >

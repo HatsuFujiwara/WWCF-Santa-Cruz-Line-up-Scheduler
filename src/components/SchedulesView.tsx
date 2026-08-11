@@ -20,7 +20,8 @@ import {
   Calendar,
   ChevronDown,
   ChevronUp,
-  Sparkles
+  Sparkles,
+  RefreshCw
 } from 'lucide-react';
 
 interface SchedulesViewProps {
@@ -32,6 +33,7 @@ interface SchedulesViewProps {
   onExportPDF: (schedule: Schedule) => void;
   onExportPNG: (schedule: Schedule) => void;
   onUpdateSchedules?: (schedules: Schedule[]) => void;
+  onRefreshLineups?: () => void;
 }
 
 export type ScheduleSortOption =
@@ -115,9 +117,11 @@ export const SchedulesView: React.FC<SchedulesViewProps> = ({
   onBulkDeleteSchedules,
   onExportPDF,
   onExportPNG,
-  onUpdateSchedules
+  onUpdateSchedules,
+  onRefreshLineups
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
+  const [isRefreshModalOpen, setIsRefreshModalOpen] = useState(false);
   const [serviceFilter, setServiceFilter] = useState<string>('all');
   const [monthFilter, setMonthFilter] = useState<string>('all');
   const [sortOption, setSortOption] = useState<ScheduleSortOption>(() => {
@@ -212,14 +216,24 @@ export const SchedulesView: React.FC<SchedulesViewProps> = ({
 
       // Search query
       if (query) {
-        const matchService = s.serviceType.toLowerCase().includes(query);
-        const matchDate = s.serviceDate.includes(query);
-        const matchPraise = s.praiseSongs.some((p) => p.toLowerCase().includes(query));
-        const matchWorship = s.worshipSongs.some((w) => w.toLowerCase().includes(query));
-        const matchMembers = s.ministryAssignments.some((m) =>
-          formatAssignmentMemberNames(m).toLowerCase().includes(query) || m.role.toLowerCase().includes(query)
+        const cleanQ = query.replace(/\s+/g, ' ');
+        const terms = cleanQ.split(' ');
+        const serviceLower = s.serviceType.toLowerCase();
+        const dateLower = (s.serviceDate || '').toLowerCase();
+        const praiseLower = (s.praiseSongs || []).map((p) => p.toLowerCase());
+        const worshipLower = (s.worshipSongs || []).map((w) => w.toLowerCase());
+        const membersLower = (s.ministryAssignments || []).map(
+          (m) => (formatAssignmentMemberNames(m) + ' ' + m.role).toLowerCase()
         );
-        return matchService || matchDate || matchPraise || matchWorship || matchMembers;
+
+        return terms.every(
+          (term) =>
+            serviceLower.includes(term) ||
+            dateLower.includes(term) ||
+            praiseLower.some((p) => p.includes(term)) ||
+            worshipLower.some((w) => w.includes(term)) ||
+            membersLower.some((m) => m.includes(term))
+        );
       }
 
       return true;
@@ -288,7 +302,7 @@ export const SchedulesView: React.FC<SchedulesViewProps> = ({
   };
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-300">
+    <div data-tour="schedules-view" className="space-y-6 animate-in fade-in duration-300">
       {/* Header & Controls Bar */}
       <div className="p-6 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-4">
@@ -302,15 +316,27 @@ export const SchedulesView: React.FC<SchedulesViewProps> = ({
             </p>
           </div>
 
-          <div className="relative w-full sm:w-72">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search date, song, or member..."
-              className="w-full pl-9 pr-4 py-2 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all"
-            />
+          <div className="flex flex-wrap items-center gap-2.5 w-full sm:w-auto">
+            <button
+              type="button"
+              onClick={() => setIsRefreshModalOpen(true)}
+              className="px-3.5 py-2 text-xs font-bold text-indigo-700 dark:text-indigo-300 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/80 dark:hover:bg-indigo-900 border border-indigo-200/80 dark:border-indigo-800/80 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 shrink-0 shadow-2xs"
+              title="Refresh all saved line-ups using current member and ministry data"
+            >
+              <RefreshCw className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+              <span>Refresh Line-ups</span>
+            </button>
+
+            <div className="relative flex-1 sm:w-64">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search date, song, or member..."
+                className="w-full pl-9 pr-4 py-2 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all"
+              />
+            </div>
           </div>
         </div>
 
@@ -347,6 +373,7 @@ export const SchedulesView: React.FC<SchedulesViewProps> = ({
               </label>
               <select
                 value={serviceFilter}
+                data-tour="schedules-filter-select"
                 onChange={(e) => setServiceFilter(e.target.value)}
                 className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500/20 outline-none cursor-pointer"
               >
@@ -369,6 +396,7 @@ export const SchedulesView: React.FC<SchedulesViewProps> = ({
               </label>
               <select
                 value={sortOption}
+                data-tour="schedules-sort-select"
                 onChange={(e) => handleSortChange(e.target.value as ScheduleSortOption)}
                 className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500/20 outline-none cursor-pointer"
               >
@@ -473,9 +501,13 @@ export const SchedulesView: React.FC<SchedulesViewProps> = ({
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                 {filteredSchedules.map((schedule) => {
                   const isSelected = selectedIds.has(schedule.id);
-                  const lead = schedule.ministryAssignments.find(
-                    (m) => m.role.toLowerCase().includes('lead') || m.role.toLowerCase().includes('worship')
+                  const leaderAssignments = (schedule.ministryAssignments || []).filter(
+                    (m) => (m.role || '').toLowerCase().includes('leader')
                   );
+                  const leaderDisplay = leaderAssignments
+                    .map((m) => formatAssignmentMemberNames(m))
+                    .filter((n) => Boolean(n) && n !== 'Unassigned' && n !== '—')
+                    .join(', ');
                   const repeatedSongs = getScheduleRepeatedSongs(schedule, schedules);
                   const isEmpty = isScheduleEmpty(schedule);
 
@@ -613,10 +645,10 @@ export const SchedulesView: React.FC<SchedulesViewProps> = ({
                         <LineupSongsPreview schedule={schedule} />
                       </td>
                       <td className="py-4 px-4 whitespace-nowrap text-xs text-slate-600 dark:text-slate-300">
-                        {lead ? (
+                        {leaderDisplay ? (
                           <div className="flex items-center gap-1.5">
                             <UserCheck className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-                            <span className="font-semibold">{formatAssignmentMemberNames(lead)}</span>
+                            <span className="font-semibold">{leaderDisplay}</span>
                           </div>
                         ) : (
                           <span className="text-slate-400">N/A</span>
@@ -669,6 +701,73 @@ export const SchedulesView: React.FC<SchedulesViewProps> = ({
           </div>
         )}
       </div>
+
+      {/* Refresh Line-ups Confirmation Modal */}
+      {isRefreshModalOpen && (
+        <div className="fixed inset-0 z-[999] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200">
+          <div
+            className="w-full max-w-md bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800 overflow-hidden transform animate-in zoom-in-95 duration-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 dark:border-slate-800 bg-indigo-50/50 dark:bg-indigo-950/20">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400">
+                  <RefreshCw className="w-5 h-5 shrink-0" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-slate-900 dark:text-slate-100 text-base">
+                    Refresh Saved Line-ups?
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Sync member tags & ministry hierarchy
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsRefreshModalOpen(false)}
+                className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-3">
+              <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed font-medium">
+                This operation will scan all saved line-ups and update member references, tag metadata, and ministry hierarchy using the current member database.
+              </p>
+              <div className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200/60 dark:border-slate-700/60 text-[11px] text-slate-500 dark:text-slate-400 space-y-1">
+                <p className="font-semibold text-slate-700 dark:text-slate-300">• Existing member assignments remain intact.</p>
+                <p className="font-semibold text-slate-700 dark:text-slate-300">• Songs, keys, service dates, and notes are preserved.</p>
+                <p className="font-semibold text-slate-700 dark:text-slate-300">• Current form and active drafts will NOT be reset.</p>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-3">
+                <button
+                  type="button"
+                  onClick={() => setIsRefreshModalOpen(false)}
+                  className="px-4 py-2 text-xs font-semibold text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-xl transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsRefreshModalOpen(false);
+                    if (onRefreshLineups) {
+                      onRefreshLineups();
+                    }
+                  }}
+                  className="px-4 py-2 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-xs transition-colors cursor-pointer flex items-center gap-1.5"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  <span>Refresh Line-ups</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -76,14 +76,21 @@ export const SongPickerModal: React.FC<SongPickerModalProps> = ({
       return false;
     }
 
-    // Text search
+    // Text search with multi-term matching
     if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      return (
-        s.title.toLowerCase().includes(q) ||
-        s.artist.toLowerCase().includes(q) ||
-        (s.key && s.key.toLowerCase().includes(q)) ||
-        (s.language && s.language.toLowerCase().includes(q))
+      const cleanQ = searchQuery.trim().toLowerCase().replace(/\s+/g, ' ');
+      const terms = cleanQ.split(' ');
+      const titleLower = s.title.toLowerCase();
+      const artistLower = s.artist.toLowerCase();
+      const keyLower = (s.key || '').toLowerCase();
+      const langLower = (s.language || '').toLowerCase();
+
+      return terms.every(
+        (term) =>
+          titleLower.includes(term) ||
+          artistLower.includes(term) ||
+          keyLower.includes(term) ||
+          langLower.includes(term)
       );
     }
 

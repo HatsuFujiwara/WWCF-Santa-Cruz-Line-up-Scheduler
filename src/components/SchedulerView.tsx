@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Member, Schedule, ServiceType, MinistryAssignment, Song, getAssignmentMembers, isMemberUnderDisciplinary } from '../types';
+import { Member, Schedule, ServiceType, MinistryAssignment, AssignedMember, Song, getAssignmentMembers, isMemberUnderDisciplinary } from '../types';
 import { SongService, MonthlyUsageCheckResult } from '../services/songService';
+import { StorageService } from '../services/storage';
 import { getNextAvailableServiceDate, getSmartInitialServiceDetails, isScheduleEmpty } from '../utils/scheduleUtils';
-import { getManilaNowISO, formatDateDisplayManila } from '../utils/dateUtils';
+import { getManilaNowISO, getManilaTodayString, formatDateDisplayManila, getManilaDateParts } from '../utils/dateUtils';
 import { sortTags } from '../utils/tagUtils';
 import { ImportSummary } from '../services/youtubePlaylistService';
 import { SongAutocomplete } from './SongAutocomplete';
@@ -34,7 +35,8 @@ import {
   FileText,
   Layers,
   X,
-  AlertTriangle
+  AlertTriangle,
+  RefreshCw
 } from 'lucide-react';
 
 interface LineupConflictModalProps {
@@ -151,15 +153,17 @@ interface SchedulerViewProps {
   showToast: (msg: string, type?: 'success' | 'danger' | 'info') => void;
   onSelectSchedule?: (schedule: Schedule) => void;
   onViewSchedules?: () => void;
+  onRefreshLineups?: () => void;
 }
 
 const DEFAULT_ROLES: { role: string; targetLabel: string }[] = [
-  { role: 'Song Leader', targetLabel: 'Song Leader, Worship Leader' },
+  { role: 'Song Leader (Praise/Worship)', targetLabel: 'Song Leader, Worship Leader' },
   { role: 'Backup Singer/s', targetLabel: 'Vocalist' },
   { role: 'Guitarist', targetLabel: 'Guitarist' },
   { role: 'Keyboardist', targetLabel: 'Keyboardist' },
   { role: 'Bassist', targetLabel: 'Bassist' },
   { role: 'Drummer', targetLabel: 'Drummer' },
+  { role: 'Audio/Live Technician', targetLabel: 'Audio/Live Technician' },
   { role: 'Lyricist', targetLabel: 'Lyricist' }
 ];
 
@@ -185,7 +189,8 @@ export const SchedulerView: React.FC<SchedulerViewProps> = ({
   onRefreshSongs,
   showToast,
   onSelectSchedule,
-  onViewSchedules
+  onViewSchedules,
+  onRefreshLineups
 }) => {
   // Manual Date Override Flag
   const [isDateManuallyEdited, setIsDateManuallyEdited] = useState<boolean>(false);
@@ -246,57 +251,114 @@ export const SchedulerView: React.FC<SchedulerViewProps> = ({
     summary: ImportSummary;
   } | null>(null);
 
+  // Duplicate schedule conflict modal state
+  const [duplicateConflictSchedule, setDuplicateConflictSchedule] = useState<Schedule | null>(null);
+  const [isDuplicateModalOpen, setIsDuplicateModalOpen] = useState<boolean>(false);
+
   // Smart Role Filter Toggle
   const [isSmartFilter, setIsSmartFilter] = useState<boolean>(true);
 
-  // Load editing schedule or initialize smart default service/date for new schedule
+  // Load editing schedule or initialize from versioned draft / smart default
   useEffect(() => {
-    const currentScheduleKey = editingSchedule ? editingSchedule.id || 'editing_unsaved' : 'new_schedule';
-    if (loadedScheduleIdRef.current !== currentScheduleKey) {
-      loadedScheduleIdRef.current = currentScheduleKey;
+    const currentContextKey = editingSchedule ? `edit_${editingSchedule.id}` : 'new_schedule';
+    if (loadedScheduleIdRef.current !== currentContextKey) {
+      loadedScheduleIdRef.current = currentContextKey;
+
+      const draft = StorageService.getDraftScheduleSync();
 
       if (editingSchedule) {
-        setServiceType(editingSchedule.serviceType);
-        setServiceDate(editingSchedule.serviceDate);
-        setIsDateManuallyEdited(true);
-        setPraiseSongs(editingSchedule.praiseSongs.length ? editingSchedule.praiseSongs : ['']);
-        setWorshipSongs(editingSchedule.worshipSongs.length ? editingSchedule.worshipSongs : ['']);
+        // User clicked Edit on an existing schedule
+        if (draft && draft.editingScheduleId === editingSchedule.id) {
+          // Restore draft for this existing schedule
+          setServiceType(draft.serviceType || editingSchedule.serviceType);
+          setServiceDate(draft.serviceDate || editingSchedule.serviceDate);
+          setIsDateManuallyEdited(true);
+          setPraiseSongs(draft.praiseSongs?.length ? draft.praiseSongs : ['']);
+          setWorshipSongs(draft.worshipSongs?.length ? draft.worshipSongs : ['']);
+          setPraiseSongKeys(draft.praiseSongKeys?.length ? draft.praiseSongKeys : ['']);
+          setWorshipSongKeys(draft.worshipSongKeys?.length ? draft.worshipSongKeys : ['']);
+          setMinistryRows(
+            syncMinistryRowsForSongLeaders(
+              draft.ministryAssignments?.length
+                ? draft.ministryAssignments.map((a: any) => ({
+                    ...a,
+                    assignedMembers: getAssignmentMembers(a),
+                    notes: a.notes || ''
+                  }))
+                : createDefaultMinistryRows()
+            )
+          );
+        } else {
+          // Fresh load of editingSchedule
+          setServiceType(editingSchedule.serviceType);
+          setServiceDate(editingSchedule.serviceDate);
+          setIsDateManuallyEdited(true);
+          setPraiseSongs(editingSchedule.praiseSongs.length ? editingSchedule.praiseSongs : ['']);
+          setWorshipSongs(editingSchedule.worshipSongs.length ? editingSchedule.worshipSongs : ['']);
 
-        const pKeys = (editingSchedule.praiseSongs.length ? editingSchedule.praiseSongs : ['']).map((s, idx) => {
-          if (editingSchedule.praiseSongKeys?.[idx] !== undefined) return editingSchedule.praiseSongKeys[idx];
-          const found = allSongs.find(x => x.title.toLowerCase() === s.trim().toLowerCase());
-          return found?.originalKey || found?.key || '';
-        });
-        setPraiseSongKeys(pKeys);
+          const pKeys = (editingSchedule.praiseSongs.length ? editingSchedule.praiseSongs : ['']).map((s, idx) => {
+            if (editingSchedule.praiseSongKeys?.[idx] !== undefined) return editingSchedule.praiseSongKeys[idx];
+            const found = allSongs.find(x => x.title.toLowerCase() === s.trim().toLowerCase());
+            return found?.originalKey || found?.key || '';
+          });
+          setPraiseSongKeys(pKeys);
 
-        const wKeys = (editingSchedule.worshipSongs.length ? editingSchedule.worshipSongs : ['']).map((s, idx) => {
-          if (editingSchedule.worshipSongKeys?.[idx] !== undefined) return editingSchedule.worshipSongKeys[idx];
-          const found = allSongs.find(x => x.title.toLowerCase() === s.trim().toLowerCase());
-          return found?.originalKey || found?.key || '';
-        });
-        setWorshipSongKeys(wKeys);
+          const wKeys = (editingSchedule.worshipSongs.length ? editingSchedule.worshipSongs : ['']).map((s, idx) => {
+            if (editingSchedule.worshipSongKeys?.[idx] !== undefined) return editingSchedule.worshipSongKeys[idx];
+            const found = allSongs.find(x => x.title.toLowerCase() === s.trim().toLowerCase());
+            return found?.originalKey || found?.key || '';
+          });
+          setWorshipSongKeys(wKeys);
 
-        setMinistryRows(
-          editingSchedule.ministryAssignments.length
-            ? editingSchedule.ministryAssignments.map(a => ({
-                ...a,
-                assignedMembers: getAssignmentMembers(a),
-                notes: a.notes || ''
-              }))
-            : createDefaultMinistryRows()
-        );
+          setMinistryRows(
+            syncMinistryRowsForSongLeaders(
+              editingSchedule.ministryAssignments.length
+                ? editingSchedule.ministryAssignments.map(a => ({
+                    ...a,
+                    assignedMembers: getAssignmentMembers(a),
+                    notes: a.notes || ''
+                  }))
+                : createDefaultMinistryRows()
+            )
+          );
+        }
       } else {
-        const smartInit = getSmartInitialServiceDetails(schedules);
-        setServiceType(smartInit.serviceType);
-        setServiceDate(smartInit.serviceDate);
-        setIsDateManuallyEdited(false);
-
-        if (smartInit.existingSchedule) {
-          loadScheduleDataIntoEditor(smartInit.existingSchedule);
+        // New Schedule mode
+        if (draft && draft.editingScheduleId === null) {
+          // Restore draft for new schedule
+          setServiceType(draft.serviceType || 'Sunday Service');
+          setServiceDate(draft.serviceDate || getManilaTodayString());
+          setIsDateManuallyEdited(true);
+          setPraiseSongs(draft.praiseSongs?.length ? draft.praiseSongs : ['']);
+          setWorshipSongs(draft.worshipSongs?.length ? draft.worshipSongs : ['']);
+          setPraiseSongKeys(draft.praiseSongKeys?.length ? draft.praiseSongKeys : ['']);
+          setWorshipSongKeys(draft.worshipSongKeys?.length ? draft.worshipSongKeys : ['']);
+          setMinistryRows(
+            syncMinistryRowsForSongLeaders(
+              draft.ministryAssignments?.length
+                ? draft.ministryAssignments.map((a: any) => ({
+                    ...a,
+                    assignedMembers: getAssignmentMembers(a),
+                    notes: a.notes || ''
+                  }))
+                : createDefaultMinistryRows()
+            )
+          );
+        } else {
+          // Initialize smart defaults
+          const smartInit = getSmartInitialServiceDetails(schedules);
+          setServiceType(smartInit.serviceType);
+          setServiceDate(smartInit.serviceDate);
+          setIsDateManuallyEdited(false);
+          setPraiseSongs(['']);
+          setWorshipSongs(['']);
+          setPraiseSongKeys(['']);
+          setWorshipSongKeys(['']);
+          setMinistryRows(createDefaultMinistryRows());
         }
       }
     }
-  }, [editingSchedule, schedules, allSongs]);
+  }, [editingSchedule]);
 
   // Helper to load a schedule object into editor state
   const loadScheduleDataIntoEditor = (sched: Schedule) => {
@@ -320,49 +382,129 @@ export const SchedulerView: React.FC<SchedulerViewProps> = ({
     setWorshipSongKeys(wKeys);
 
     setMinistryRows(
-      sched.ministryAssignments.length
-        ? sched.ministryAssignments.map(a => ({
-            ...a,
-            assignedMembers: getAssignmentMembers(a),
-            notes: a.notes || ''
-          }))
-        : createDefaultMinistryRows()
+      syncMinistryRowsForSongLeaders(
+        sched.ministryAssignments.length
+          ? sched.ministryAssignments.map(a => ({
+              ...a,
+              assignedMembers: getAssignmentMembers(a),
+              notes: a.notes || ''
+            }))
+          : createDefaultMinistryRows()
+      )
     );
   };
 
-  // Handlers for Service Type & Date with smart auto-calculation & lineup auto-loading
+  // Handlers for Service Type & Date with smart auto-calculation (NO SILENT OVERWRITES!)
   const handleServiceTypeChange = (newType: ServiceType) => {
+    const prevType = serviceType;
     setServiceType(newType);
-    const targetDate = isDateManuallyEdited ? serviceDate : getNextAvailableServiceDate(newType, schedules);
-    if (!isDateManuallyEdited) {
-      setServiceDate(targetDate);
+
+    let targetDate = serviceDate;
+
+    if (newType === 'Sunday Service') {
+      const { dayOfWeek } = getManilaDateParts(serviceDate);
+      if (dayOfWeek !== 0 || !isDateManuallyEdited) {
+        targetDate = getNextAvailableServiceDate('Sunday Service', schedules);
+        setIsDateManuallyEdited(false);
+      }
+    } else if (newType === 'Midweek Prayer Service') {
+      targetDate = getNextAvailableServiceDate('Midweek Prayer Service', schedules);
+      setIsDateManuallyEdited(false);
+    } else {
+      if (!isDateManuallyEdited) {
+        targetDate = getNextAvailableServiceDate(newType, schedules);
+      }
     }
-    const matchingSched = schedules.find(s => s.serviceType === newType && s.serviceDate === targetDate);
-    if (matchingSched) {
-      loadScheduleDataIntoEditor(matchingSched);
-    }
+
+    setServiceDate(targetDate);
+
+    // Notify Interactive Guide that user selected a Service Type
+    window.dispatchEvent(
+      new CustomEvent('service-type-user-selected', {
+        detail: {
+          previousType: prevType,
+          serviceType: newType,
+          serviceDate: targetDate
+        }
+      })
+    );
   };
 
   const handleServiceDateChange = (newDate: string) => {
+    if (!newDate) return;
+    const prevDate = serviceDate;
+
+    if (serviceType === 'Sunday Service') {
+      const { dayOfWeek } = getManilaDateParts(newDate);
+      if (dayOfWeek !== 0) {
+        showToast('Sunday Service lineups must be scheduled on a Sunday.', 'danger');
+        return;
+      }
+    }
+
     setServiceDate(newDate);
     setIsDateManuallyEdited(true);
-    const matchingSched = schedules.find(s => s.serviceType === serviceType && s.serviceDate === newDate);
-    if (matchingSched) {
-      loadScheduleDataIntoEditor(matchingSched);
-    }
+
+    // Notify Interactive Guide that user selected/changed a Service Date
+    window.dispatchEvent(
+      new CustomEvent('service-date-user-selected', {
+        detail: {
+          previousDate: prevDate,
+          serviceDate: newDate,
+          serviceType: serviceType
+        }
+      })
+    );
   };
 
-  // Auto-save draft trigger on changes
+  // Auto-save draft trigger on any changes to scheduler state
   useEffect(() => {
-    const draft: Partial<Schedule> = {
+    const draft: Partial<Schedule> & { version?: number; editingScheduleId?: string | null } = {
+      version: 2,
+      editingScheduleId: editingSchedule?.id || null,
       serviceType,
       serviceDate,
       praiseSongs,
       worshipSongs,
+      praiseSongKeys,
+      worshipSongKeys,
       ministryAssignments: ministryRows
     };
     onTriggerDraft(draft);
-  }, [serviceType, serviceDate, praiseSongs, worshipSongs, ministryRows]);
+
+    // Dispatch custom event so Interactive Guide can detect song additions/playlist imports
+    window.dispatchEvent(
+      new CustomEvent('lineup-songs-changed', {
+        detail: { praiseSongs, worshipSongs }
+      })
+    );
+  }, [serviceType, serviceDate, praiseSongs, worshipSongs, praiseSongKeys, worshipSongKeys, ministryRows, editingSchedule]);
+
+  // Listen for request-lineup-songs and request-service-details from Interactive Guide
+  useEffect(() => {
+    const handleRequestSongs = () => {
+      window.dispatchEvent(
+        new CustomEvent('lineup-songs-changed', {
+          detail: { praiseSongs, worshipSongs }
+        })
+      );
+    };
+
+    const handleRequestDetails = () => {
+      window.dispatchEvent(
+        new CustomEvent('service-details-response', {
+          detail: { serviceType, serviceDate }
+        })
+      );
+    };
+
+    window.addEventListener('request-lineup-songs', handleRequestSongs);
+    window.addEventListener('request-service-details', handleRequestDetails);
+    return () => {
+      window.removeEventListener('request-lineup-songs', handleRequestSongs);
+      window.removeEventListener('request-service-details', handleRequestDetails);
+    };
+  }, [praiseSongs, worshipSongs, serviceType, serviceDate]);
 
   // Song input handlers
   const handlePraiseChange = (index: number, value: string) => {
@@ -742,6 +884,12 @@ export const SchedulerView: React.FC<SchedulerViewProps> = ({
       `Replaced songs in lineup with imported playlist. (${summary.newlyAdded} new song${summary.newlyAdded === 1 ? '' : 's'} added to database)`,
       'success'
     );
+
+    window.dispatchEvent(
+      new CustomEvent('playlist-import-success', {
+        detail: { praiseSongs: newPraise, worshipSongs: newWorship, summary }
+      })
+    );
   };
 
   const executePlaylistMerge = async (importedSongs: Song[], summary: ImportSummary) => {
@@ -807,6 +955,12 @@ export const SchedulerView: React.FC<SchedulerViewProps> = ({
       `Merged ${nonDuplicates.length} new song${nonDuplicates.length === 1 ? '' : 's'} into lineup!`,
       'success'
     );
+
+    window.dispatchEvent(
+      new CustomEvent('playlist-import-success', {
+        detail: { praiseSongs: finalPraise, worshipSongs: finalWorship, summary }
+      })
+    );
   };
 
   const executePlaylistImport = async (importedSongs: Song[], summary: ImportSummary) => {
@@ -833,63 +987,274 @@ export const SchedulerView: React.FC<SchedulerViewProps> = ({
     setWorshipSongs(['']);
     setIsImportModalOpen(false);
     showToast('Started blank service line-up.', 'info');
+    window.dispatchEvent(
+      new CustomEvent('blank-lineup-created', {
+        detail: { praiseSongs: [''], worshipSongs: [''] }
+      })
+    );
   };
 
-  // Ministry handlers
+  // Ministry handlers & dynamic 1 vs 2 Song Leaders sync
+  const syncMinistryRowsForSongLeaders = (rows: MinistryAssignment[]): MinistryAssignment[] => {
+    const isLeader = (rName: string) => {
+      const r = (rName || '').toLowerCase();
+      return r.includes('song leader') || r.includes('worship leader') || r.includes('praise leader') || r.includes('song lead');
+    };
+
+    const isBackup = (rName: string) => {
+      const r = (rName || '').toLowerCase();
+      return r.includes('backup') || r.includes('vocalist');
+    };
+
+    const leaderRows = rows.filter((r) => isLeader(r.role));
+    const backupRows = rows.filter((r) => isBackup(r.role));
+    const otherRows = rows.filter((r) => !isLeader(r.role) && !isBackup(r.role));
+
+    // Extract assigned song leaders
+    let leaderMembers: AssignedMember[] = [];
+    leaderRows.forEach((r) => {
+      const members = getAssignmentMembers(r);
+      members.forEach((m) => {
+        leaderMembers.push(m);
+      });
+    });
+
+    const filledLeaderMembers = leaderMembers.filter(
+      (m) => Boolean(m.memberId) || (m.memberName && m.memberName !== 'Unassigned' && m.memberName !== '—' && m.memberName !== '')
+    );
+
+    const filledPraiseLeaders = leaderRows
+      .filter((r) => {
+        const rLower = (r.role || '').toLowerCase();
+        return rLower.includes('praise') && !rLower.includes('worship');
+      })
+      .flatMap((r) => getAssignmentMembers(r))
+      .filter((m) => Boolean(m.memberId) || (m.memberName && m.memberName !== 'Unassigned' && m.memberName !== '—' && m.memberName !== ''));
+
+    const filledWorshipLeaders = leaderRows
+      .filter((r) => {
+        const rLower = (r.role || '').toLowerCase();
+        return rLower.includes('worship') && !rLower.includes('praise');
+      })
+      .flatMap((r) => getAssignmentMembers(r))
+      .filter((m) => Boolean(m.memberId) || (m.memberName && m.memberName !== 'Unassigned' && m.memberName !== '—' && m.memberName !== ''));
+
+    const hasTwoSeparateFilledLeaders = filledPraiseLeaders.length > 0 && filledWorshipLeaders.length > 0;
+
+    const isTwoLeaders =
+      leaderMembers.length >= 2 ||
+      filledLeaderMembers.length >= 2 ||
+      hasTwoSeparateFilledLeaders;
+
+    if (!isTwoLeaders) {
+      // ONE SONG LEADER MODE
+      const singleLeader = leaderMembers[0] || { memberId: '', memberName: '' };
+
+      const existingPWLeaderRow = leaderRows.find((r) =>
+        r.role.toLowerCase().includes('praise/worship') || r.role.toLowerCase().includes('praise & worship')
+      );
+
+      const newLeaderRow: MinistryAssignment = {
+        id: existingPWLeaderRow?.id || leaderRows[0]?.id || `m-row-sl-pw-${Date.now()}`,
+        role: 'Song Leader (Praise/Worship)',
+        assignedMembers: [singleLeader],
+        notes: existingPWLeaderRow?.notes || leaderRows[0]?.notes || ''
+      };
+
+      // Combine all backup members from any backup rows
+      let combinedBackupsRaw: AssignedMember[] = [];
+      backupRows.forEach((r) => {
+        combinedBackupsRaw.push(...getAssignmentMembers(r));
+      });
+
+      // Exclude single leader if assigned
+      if (singleLeader.memberId) {
+        combinedBackupsRaw = combinedBackupsRaw.filter((m) => m.memberId !== singleLeader.memberId);
+      }
+
+      // Deduplicate filled members, but keep empty/unassigned slots so + Add Member works!
+      const combinedBackups: AssignedMember[] = [];
+      const seenIds = new Set<string>();
+      combinedBackupsRaw.forEach((m) => {
+        if (m.memberId) {
+          if (!seenIds.has(m.memberId)) {
+            seenIds.add(m.memberId);
+            combinedBackups.push(m);
+          }
+        } else {
+          combinedBackups.push(m);
+        }
+      });
+
+      const finalBackups = combinedBackups.length > 0 ? combinedBackups : [{ memberId: '', memberName: '' }];
+
+      const existingGenBackupRow = backupRows.find((r) =>
+        !r.role.toLowerCase().includes('praise') && !r.role.toLowerCase().includes('worship')
+      );
+
+      const newBackupRow: MinistryAssignment = {
+        id: existingGenBackupRow?.id || backupRows[0]?.id || `m-row-bu-gen-${Date.now()}`,
+        role: 'Backup Singer/s',
+        assignedMembers: finalBackups,
+        notes: existingGenBackupRow?.notes || backupRows[0]?.notes || ''
+      };
+
+      return [newLeaderRow, newBackupRow, ...otherRows];
+    } else {
+      // TWO SONG LEADERS MODE
+      const praiseLeader = leaderMembers[0] || { memberId: '', memberName: '' };
+      const worshipLeader = leaderMembers[1] || { memberId: '', memberName: '' };
+
+      const existingPraiseLeaderRow = leaderRows.find((r) =>
+        r.role.toLowerCase().includes('praise') && !r.role.toLowerCase().includes('worship')
+      );
+      const existingWorshipLeaderRow = leaderRows.find((r) =>
+        r.role.toLowerCase().includes('worship') && !r.role.toLowerCase().includes('praise')
+      );
+
+      const existingPraiseBackupRow = backupRows.find((r) =>
+        r.role.toLowerCase().includes('praise') && !r.role.toLowerCase().includes('worship')
+      );
+      const existingWorshipBackupRow = backupRows.find((r) =>
+        r.role.toLowerCase().includes('worship') && !r.role.toLowerCase().includes('praise')
+      );
+      const existingGenBackupRow = backupRows.find((r) =>
+        !r.role.toLowerCase().includes('praise') && !r.role.toLowerCase().includes('worship')
+      );
+
+      // Praise Backups
+      let pBackupList: AssignedMember[] = [];
+      if (existingPraiseBackupRow) {
+        pBackupList = getAssignmentMembers(existingPraiseBackupRow);
+      } else if (existingGenBackupRow) {
+        pBackupList = getAssignmentMembers(existingGenBackupRow);
+      }
+      if (praiseLeader.memberId) {
+        pBackupList = pBackupList.filter((m) => m.memberId !== praiseLeader.memberId);
+      }
+      if (pBackupList.length === 0) {
+        pBackupList = [{ memberId: '', memberName: '' }];
+      }
+
+      // Worship Backups
+      let wBackupList: AssignedMember[] = [];
+      if (existingWorshipBackupRow) {
+        wBackupList = getAssignmentMembers(existingWorshipBackupRow);
+      } else {
+        wBackupList = [{ memberId: '', memberName: '' }];
+      }
+      if (worshipLeader.memberId) {
+        wBackupList = wBackupList.filter((m) => m.memberId !== worshipLeader.memberId);
+      }
+      if (wBackupList.length === 0) {
+        wBackupList = [{ memberId: '', memberName: '' }];
+      }
+
+      const praiseLeaderRow: MinistryAssignment = {
+        id: existingPraiseLeaderRow?.id || leaderRows[0]?.id || `m-row-sl-praise-${Date.now()}`,
+        role: 'Song Leader (Praise)',
+        assignedMembers: [praiseLeader],
+        notes: existingPraiseLeaderRow?.notes || leaderRows[0]?.notes || ''
+      };
+
+      const worshipLeaderRow: MinistryAssignment = {
+        id: existingWorshipLeaderRow?.id || leaderRows[1]?.id || `m-row-sl-worship-${Date.now() + 1}`,
+        role: 'Song Leader (Worship)',
+        assignedMembers: [worshipLeader],
+        notes: existingWorshipLeaderRow?.notes || leaderRows[1]?.notes || ''
+      };
+
+      const praiseBackupRow: MinistryAssignment = {
+        id: existingPraiseBackupRow?.id || backupRows[0]?.id || `m-row-bu-praise-${Date.now() + 2}`,
+        role: 'Backup Singer/s (Praise)',
+        assignedMembers: pBackupList,
+        notes: existingPraiseBackupRow?.notes || backupRows[0]?.notes || ''
+      };
+
+      const worshipBackupRow: MinistryAssignment = {
+        id: existingWorshipBackupRow?.id || backupRows[1]?.id || `m-row-bu-worship-${Date.now() + 3}`,
+        role: 'Backup Singer/s (Worship)',
+        assignedMembers: wBackupList,
+        notes: existingWorshipBackupRow?.notes || backupRows[1]?.notes || ''
+      };
+
+      // REQUIRED ORDER:
+      // 1. Song Leader (Praise)
+      // 2. Song Leader (Worship)
+      // 3. Backup Singer/s (Praise)
+      // 4. Backup Singer/s (Worship)
+      return [praiseLeaderRow, worshipLeaderRow, praiseBackupRow, worshipBackupRow, ...otherRows];
+    }
+  };
+
   const handleMinistryRoleChange = (id: string, newRole: string) => {
-    setMinistryRows(
-      ministryRows.map((row) => (row.id === id ? { ...row, role: newRole } : row))
+    setMinistryRows((rows) =>
+      rows.map((row) => (row.id === id ? { ...row, role: newRole } : row))
     );
   };
 
   const handleMinistryNotesChange = (id: string, notes: string) => {
-    setMinistryRows(
-      ministryRows.map((row) => (row.id === id ? { ...row, notes } : row))
+    setMinistryRows((rows) =>
+      rows.map((row) => (row.id === id ? { ...row, notes } : row))
     );
   };
 
   const handleAddMemberToMinistry = (rowId: string) => {
-    setMinistryRows((rows) =>
-      rows.map((row) => {
+    setMinistryRows((rows) => {
+      const updated = rows.map((row) => {
         if (row.id !== rowId) return row;
         const current = getAssignmentMembers(row);
         return {
           ...row,
           assignedMembers: [...current, { memberId: '', memberName: '' }]
         };
-      })
-    );
+      });
+      return syncMinistryRowsForSongLeaders(updated);
+    });
   };
 
   const handleUpdateMinistryMember = (rowId: string, memberIdx: number, memberId: string) => {
     const memberObj = members.find((m) => m.id === memberId);
-    setMinistryRows((rows) =>
-      rows.map((row) => {
-        if (row.id !== rowId) return row;
-        const current = [...getAssignmentMembers(row)];
-        current[memberIdx] = {
-          memberId,
-          memberName: memberObj ? memberObj.name : ''
-        };
-        return {
-          ...row,
-          assignedMembers: current
-        };
-      })
-    );
+
+    setMinistryRows((rows) => {
+      const updated = rows.map((row) => {
+        if (row.id === rowId) {
+          const current = [...getAssignmentMembers(row)];
+          current[memberIdx] = {
+            memberId,
+            memberName: memberObj ? memberObj.name : ''
+          };
+          return {
+            ...row,
+            assignedMembers: current
+          };
+        }
+        return row;
+      });
+      return syncMinistryRowsForSongLeaders(updated);
+    });
+
+    if (memberId) {
+      window.dispatchEvent(
+        new CustomEvent('team-member-assigned', {
+          detail: { rowId, memberId }
+        })
+      );
+    }
   };
 
   const handleRemoveMemberFromMinistry = (rowId: string, memberIdx: number) => {
-    setMinistryRows((rows) =>
-      rows.map((row) => {
+    setMinistryRows((rows) => {
+      const updated = rows.map((row) => {
         if (row.id !== rowId) return row;
         const current = getAssignmentMembers(row).filter((_, idx) => idx !== memberIdx);
         return {
           ...row,
           assignedMembers: current
         };
-      })
-    );
+      });
+      return syncMinistryRowsForSongLeaders(updated);
+    });
   };
 
   const addMinistryRow = () => {
@@ -903,26 +1268,23 @@ export const SchedulerView: React.FC<SchedulerViewProps> = ({
   };
 
   const removeMinistryRow = (id: string) => {
-    setMinistryRows(ministryRows.filter((r) => r.id !== id));
+    setMinistryRows((rows) => syncMinistryRowsForSongLeaders(rows.filter((r) => r.id !== id)));
   };
 
-  // Filter members dropdown helper based on smart role matching
+  // Filter members dropdown helper based on smart role matching & date-aware DA check
   const getFilteredMembers = (roleName: string) => {
-    // When editing an existing lineup, retain DA members; when creating a new lineup, exclude DA members.
-    const isEditingExisting = Boolean(editingSchedule && editingSchedule.id);
-    const eligibleMembers = isEditingExisting
-      ? members
-      : members.filter((m) => !isMemberUnderDisciplinary(m));
+    // A member is unavailable for new selection ONLY if isMemberUnderDisciplinary(m, serviceDate) === true.
+    const eligibleMembers = members.filter((m) => !isMemberUnderDisciplinary(m, serviceDate));
 
     if (!isSmartFilter || !roleName) return eligibleMembers;
 
     const lowerRole = roleName.toLowerCase();
     let targetKeywords: string[] = [];
 
-    if (lowerRole.includes('song') || lowerRole.includes('lead') || lowerRole.includes('worship')) {
+    if (lowerRole.includes('backup') || lowerRole.includes('vocal') || lowerRole.includes('singer')) {
+      targetKeywords = ['vocalist', 'backup', 'singer', 'song leader', 'worship leader'];
+    } else if (lowerRole.includes('song') || lowerRole.includes('lead') || lowerRole.includes('worship')) {
       targetKeywords = ['song leader', 'worship leader', 'song lead'];
-    } else if (lowerRole.includes('backup') || lowerRole.includes('vocal') || lowerRole.includes('singer')) {
-      targetKeywords = ['vocalist'];
     } else if (lowerRole.includes('guitar')) {
       targetKeywords = ['guitarist'];
     } else if (lowerRole.includes('keyboard') || lowerRole.includes('key')) {
@@ -931,6 +1293,8 @@ export const SchedulerView: React.FC<SchedulerViewProps> = ({
       targetKeywords = ['bassist'];
     } else if (lowerRole.includes('drum')) {
       targetKeywords = ['drummer'];
+    } else if (lowerRole.includes('audio') || lowerRole.includes('tech') || lowerRole.includes('live') || lowerRole.includes('sound')) {
+      targetKeywords = ['audio/live technician', 'technician', 'tech'];
     } else if (lowerRole.includes('lyric') || lowerRole.includes('slides') || lowerRole.includes('av')) {
       targetKeywords = ['lyricist'];
     }
@@ -980,6 +1344,19 @@ export const SchedulerView: React.FC<SchedulerViewProps> = ({
       worshipSongKeys: worshipSongs.map((s, i) => worshipSongKeys[i] || '').filter((_, i) => Boolean(worshipSongs[i]?.trim())),
       ministryAssignments: validAssignments
     };
+
+    // Check if a saved schedule already exists for this exact serviceType + serviceDate
+    const conflictingSchedule = schedules.find((s) => {
+      if (editingSchedule?.id && s.id === editingSchedule.id) return false;
+      if (isScheduleEmpty(s)) return false;
+      return s.serviceType === serviceType && s.serviceDate === serviceDate;
+    });
+
+    if (conflictingSchedule) {
+      setDuplicateConflictSchedule(conflictingSchedule);
+      setIsDuplicateModalOpen(true);
+      return;
+    }
 
     // Check monthly usage for selected songs
     const allSelectedSongs = Array.from(new Set([...filteredPraise, ...filteredWorship]));
@@ -1036,6 +1413,11 @@ export const SchedulerView: React.FC<SchedulerViewProps> = ({
     setIsMonthlyModalOpen(false);
     setMonthlyWarnings([]);
     setPendingSaveData(null);
+    window.dispatchEvent(
+      new CustomEvent('lineup-saved-success', {
+        detail: { data, id }
+      })
+    );
   };
 
   const getTempSchedule = (): Schedule => ({
@@ -1072,6 +1454,11 @@ export const SchedulerView: React.FC<SchedulerViewProps> = ({
       return;
     }
     onExportPDF(temp);
+    window.dispatchEvent(
+      new CustomEvent('lineup-exported-success', {
+        detail: { type: 'pdf' }
+      })
+    );
   };
 
   const handleExportPNG = () => {
@@ -1081,10 +1468,15 @@ export const SchedulerView: React.FC<SchedulerViewProps> = ({
       return;
     }
     onExportPNG(temp);
+    window.dispatchEvent(
+      new CustomEvent('lineup-exported-success', {
+        detail: { type: 'png' }
+      })
+    );
   };
 
   return (
-    <div className="space-y-6 max-w-5xl mx-auto animate-in fade-in duration-300">
+    <div data-tour="scheduler-view" className="space-y-6 max-w-5xl mx-auto animate-in fade-in duration-300">
       {/* Title Header */}
       <div className="p-6 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs flex flex-wrap items-center justify-between gap-4">
         <div>
@@ -1103,6 +1495,34 @@ export const SchedulerView: React.FC<SchedulerViewProps> = ({
         )}
       </div>
 
+      {/* Existing Schedule Notice Banner */}
+      {(() => {
+        const existingMatchingSched = schedules.find(
+          (s) => s.serviceType === serviceType && s.serviceDate === serviceDate && s.id !== editingSchedule?.id
+        );
+        if (!existingMatchingSched) return null;
+        return (
+          <div className="p-4 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 rounded-xl flex flex-wrap items-center justify-between gap-3 text-xs text-amber-800 dark:text-amber-200 animate-in fade-in duration-200">
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+              <span>
+                A saved lineup already exists for <strong>{existingMatchingSched.serviceType}</strong> on <strong>{existingMatchingSched.serviceDate}</strong>. Your active draft remains intact.
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                loadScheduleDataIntoEditor(existingMatchingSched);
+                showToast(`Loaded existing lineup for ${existingMatchingSched.serviceDate}`, 'info');
+              }}
+              className="px-3 py-1 font-semibold text-amber-900 dark:text-amber-100 bg-amber-200/80 dark:bg-amber-900/60 hover:bg-amber-300 dark:hover:bg-amber-800 rounded-lg transition-colors cursor-pointer shrink-0"
+            >
+              Load Existing Lineup
+            </button>
+          </div>
+        );
+      })()}
+
       {/* 1. Service Details Section */}
       <div className="p-6 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs space-y-4">
         <h3 className="text-xs font-bold uppercase tracking-wider text-slate-800 dark:text-slate-200 flex items-center gap-2 pb-3 border-b border-slate-100 dark:border-slate-800">
@@ -1117,6 +1537,7 @@ export const SchedulerView: React.FC<SchedulerViewProps> = ({
             </label>
             <select
               value={serviceType}
+              data-tour="service-type-select"
               onChange={(e) => handleServiceTypeChange(e.target.value as ServiceType)}
               className="w-full px-3.5 py-2.5 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all"
             >
@@ -1133,6 +1554,7 @@ export const SchedulerView: React.FC<SchedulerViewProps> = ({
             </label>
             <input
               type="date"
+              data-tour="service-date-picker"
               value={serviceDate}
               onChange={(e) => handleServiceDateChange(e.target.value)}
               className="w-full px-3.5 py-2.5 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all"
@@ -1152,7 +1574,7 @@ export const SchedulerView: React.FC<SchedulerViewProps> = ({
       />
 
       {/* 2. Song List Section */}
-      <div className="p-6 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs space-y-6">
+      <div data-tour="add-songs-section" className="p-6 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-3 border-b border-slate-100 dark:border-slate-800">
           <h3 className="text-xs font-bold uppercase tracking-wider text-slate-800 dark:text-slate-200 flex items-center gap-2">
             <Music className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
@@ -1171,6 +1593,7 @@ export const SchedulerView: React.FC<SchedulerViewProps> = ({
 
             <button
               type="button"
+              data-tour="import-playlist-btn"
               onClick={() => setIsImportModalOpen(true)}
               className="px-3.5 py-1.5 bg-gradient-to-r from-red-600 to-indigo-600 hover:from-red-700 hover:to-indigo-700 text-white rounded-lg text-xs font-semibold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer"
             >
@@ -1180,7 +1603,7 @@ export const SchedulerView: React.FC<SchedulerViewProps> = ({
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div data-tour="rearrangeable-song-list" className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Praise Songs (Fast) */}
           <div className="p-5 rounded-xl bg-slate-50/50 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800/80 space-y-4">
             <div className="flex items-center justify-between">
@@ -1208,93 +1631,99 @@ export const SchedulerView: React.FC<SchedulerViewProps> = ({
                     onDragStart={(e) => handleDragStart(e, 'praise', idx)}
                     onDragOver={(e) => handleDragOver(e, 'praise', idx)}
                     onDrop={(e) => handleDrop(e, 'praise', idx)}
-                    className={`group flex items-center gap-2 p-2 bg-white dark:bg-slate-900 rounded-xl border transition-all ${
+                    className={`group flex flex-col sm:flex-row sm:items-center gap-2 p-2.5 sm:p-2 bg-white dark:bg-slate-900 rounded-xl border transition-all ${
                       isOver
                         ? 'border-indigo-500 ring-2 ring-indigo-500/20 bg-indigo-50/30'
                         : 'border-slate-200 dark:border-slate-800 shadow-2xs'
                     }`}
                   >
-                    {/* Drag Handle */}
-                    <div
-                      className="cursor-grab active:cursor-grabbing text-slate-300 dark:text-slate-600 hover:text-slate-500 dark:hover:text-slate-300 p-0.5 shrink-0"
-                      title="Drag to reorder"
-                    >
-                      <GripVertical className="w-4 h-4" />
+                    {/* Top Row on Mobile: Drag, Index, Autocomplete */}
+                    <div className="flex items-center gap-2 w-full sm:w-auto flex-1 min-w-0">
+                      {/* Drag Handle */}
+                      <div
+                        className="cursor-grab active:cursor-grabbing text-slate-300 dark:text-slate-600 hover:text-slate-500 dark:hover:text-slate-300 p-1 shrink-0"
+                        title="Drag to reorder"
+                      >
+                        <GripVertical className="w-4 h-4" />
+                      </div>
+
+                      <span className="text-xs font-bold text-slate-300 dark:text-slate-600 w-4 text-center shrink-0">
+                        {String(idx + 1).padStart(2, '0')}
+                      </span>
+
+                      <div className="flex-1 min-w-0">
+                        <SongAutocomplete
+                          value={song}
+                          onChange={(val) => handlePraiseChange(idx, val)}
+                          category="praise"
+                          serviceDate={serviceDate}
+                          serviceType={serviceType}
+                          allSongs={allSongs}
+                          schedules={schedules}
+                          excludeScheduleId={editingSchedule?.id}
+                          placeholder="Search or enter praise song..."
+                          onOpenLibrary={() =>
+                            setPickerConfig({ isOpen: true, category: 'praise', songIndex: idx })
+                          }
+                        />
+                      </div>
                     </div>
 
-                    <span className="text-xs font-bold text-slate-300 dark:text-slate-600 w-4 text-center shrink-0">
-                      {String(idx + 1).padStart(2, '0')}
-                    </span>
+                    {/* Bottom Row on Mobile / Inline on Desktop: Key, Category, Move, Remove */}
+                    <div className="flex items-center justify-between sm:justify-start gap-2 pt-1 sm:pt-0 border-t sm:border-t-0 border-slate-100 dark:border-slate-800/60 w-full sm:w-auto shrink-0 pl-6 sm:pl-0">
+                      {/* Performed Key Field */}
+                      <div className="w-20 shrink-0" title="Performed Key (defaults to Original Key)">
+                        <input
+                          type="text"
+                          value={praiseSongKeys[idx] || ''}
+                          onChange={(e) => handlePraiseKeyChange(idx, e.target.value)}
+                          placeholder="Key"
+                          className="w-full px-2 py-1.5 text-xs font-bold text-indigo-700 dark:text-indigo-300 bg-indigo-50/70 dark:bg-indigo-950/70 border border-indigo-200 dark:border-indigo-800 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500/20 text-center"
+                        />
+                      </div>
 
-                    <div className="flex-1 min-w-0">
-                      <SongAutocomplete
-                        value={song}
-                        onChange={(val) => handlePraiseChange(idx, val)}
-                        category="praise"
-                        serviceDate={serviceDate}
-                        serviceType={serviceType}
-                        allSongs={allSongs}
-                        schedules={schedules}
-                        excludeScheduleId={editingSchedule?.id}
-                        placeholder="Search or enter praise song..."
-                        onOpenLibrary={() =>
-                          setPickerConfig({ isOpen: true, category: 'praise', songIndex: idx })
+                      {/* Category Switcher */}
+                      <select
+                        value="praise"
+                        onChange={(e) =>
+                          changeSongCategory('praise', idx, e.target.value as 'praise' | 'worship')
                         }
-                      />
-                    </div>
+                        className="text-[11px] font-semibold py-1.5 px-2 rounded-lg border border-amber-200 dark:border-amber-900/80 bg-amber-50 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 outline-none cursor-pointer shrink-0"
+                        title="Change Category"
+                      >
+                        <option value="praise">Praise</option>
+                        <option value="worship">Worship</option>
+                      </select>
 
-                    {/* Performed Key Field */}
-                    <div className="w-20 shrink-0" title="Performed Key (defaults to Original Key)">
-                      <input
-                        type="text"
-                        value={praiseSongKeys[idx] || ''}
-                        onChange={(e) => handlePraiseKeyChange(idx, e.target.value)}
-                        placeholder="Key"
-                        className="w-full px-2 py-1.5 text-xs font-bold text-indigo-700 dark:text-indigo-300 bg-indigo-50/70 dark:bg-indigo-950/70 border border-indigo-200 dark:border-indigo-800 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500/20 text-center"
-                      />
-                    </div>
+                      {/* Move Up/Down Controls */}
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => moveSongUp('praise', idx)}
+                          className="p-1.5 min-w-[32px] min-h-[32px] flex items-center justify-center text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 bg-slate-50 dark:bg-slate-800/50 sm:bg-transparent rounded transition-colors cursor-pointer"
+                          title="Move Up"
+                        >
+                          <ChevronUp className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => moveSongDown('praise', idx)}
+                          className="p-1.5 min-w-[32px] min-h-[32px] flex items-center justify-center text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 bg-slate-50 dark:bg-slate-800/50 sm:bg-transparent rounded transition-colors cursor-pointer"
+                          title="Move Down"
+                        >
+                          <ChevronDown className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
 
-                    {/* Category Switcher */}
-                    <select
-                      value="praise"
-                      onChange={(e) =>
-                        changeSongCategory('praise', idx, e.target.value as 'praise' | 'worship')
-                      }
-                      className="text-[11px] font-semibold py-1 px-2 rounded-lg border border-amber-200 dark:border-amber-900/80 bg-amber-50 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 outline-none cursor-pointer shrink-0"
-                      title="Change Category"
-                    >
-                      <option value="praise">Praise</option>
-                      <option value="worship">Worship</option>
-                    </select>
-
-                    {/* Move Up/Down Controls */}
-                    <div className="flex items-center gap-0.5 shrink-0">
                       <button
                         type="button"
-                        onClick={() => moveSongUp('praise', idx)}
-                        className="p-1 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 rounded transition-colors cursor-pointer"
-                        title="Move Up"
+                        onClick={() => removePraiseSong(idx)}
+                        className="p-1.5 min-w-[32px] min-h-[32px] flex items-center justify-center text-slate-300 dark:text-slate-600 hover:text-rose-500 dark:hover:text-rose-400 rounded transition-colors cursor-pointer shrink-0 ml-auto sm:ml-0"
+                        aria-label="Remove song"
                       >
-                        <ChevronUp className="w-3.5 h-3.5" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => moveSongDown('praise', idx)}
-                        className="p-1 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 rounded transition-colors cursor-pointer"
-                        title="Move Down"
-                      >
-                        <ChevronDown className="w-3.5 h-3.5" />
+                        <Trash2 className="w-4 h-4" />
                       </button>
                     </div>
-
-                    <button
-                      type="button"
-                      onClick={() => removePraiseSong(idx)}
-                      className="p-1 text-slate-300 dark:text-slate-600 hover:text-rose-500 dark:hover:text-rose-400 rounded transition-colors cursor-pointer shrink-0"
-                      aria-label="Remove song"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
                   </div>
                 );
               })}
@@ -1328,93 +1757,99 @@ export const SchedulerView: React.FC<SchedulerViewProps> = ({
                     onDragStart={(e) => handleDragStart(e, 'worship', idx)}
                     onDragOver={(e) => handleDragOver(e, 'worship', idx)}
                     onDrop={(e) => handleDrop(e, 'worship', idx)}
-                    className={`group flex items-center gap-2 p-2 bg-white dark:bg-slate-900 rounded-xl border transition-all ${
+                    className={`group flex flex-col sm:flex-row sm:items-center gap-2 p-2.5 sm:p-2 bg-white dark:bg-slate-900 rounded-xl border transition-all ${
                       isOver
                         ? 'border-indigo-500 ring-2 ring-indigo-500/20 bg-indigo-50/30'
                         : 'border-slate-200 dark:border-slate-800 shadow-2xs'
                     }`}
                   >
-                    {/* Drag Handle */}
-                    <div
-                      className="cursor-grab active:cursor-grabbing text-slate-300 dark:text-slate-600 hover:text-slate-500 dark:hover:text-slate-300 p-0.5 shrink-0"
-                      title="Drag to reorder"
-                    >
-                      <GripVertical className="w-4 h-4" />
+                    {/* Top Row on Mobile: Drag, Index, Autocomplete */}
+                    <div className="flex items-center gap-2 w-full sm:w-auto flex-1 min-w-0">
+                      {/* Drag Handle */}
+                      <div
+                        className="cursor-grab active:cursor-grabbing text-slate-300 dark:text-slate-600 hover:text-slate-500 dark:hover:text-slate-300 p-1 shrink-0"
+                        title="Drag to reorder"
+                      >
+                        <GripVertical className="w-4 h-4" />
+                      </div>
+
+                      <span className="text-xs font-bold text-slate-300 dark:text-slate-600 w-4 text-center shrink-0">
+                        {String(idx + 1).padStart(2, '0')}
+                      </span>
+
+                      <div className="flex-1 min-w-0">
+                        <SongAutocomplete
+                          value={song}
+                          onChange={(val) => handleWorshipChange(idx, val)}
+                          category="worship"
+                          serviceDate={serviceDate}
+                          serviceType={serviceType}
+                          allSongs={allSongs}
+                          schedules={schedules}
+                          excludeScheduleId={editingSchedule?.id}
+                          placeholder="Search or enter worship song..."
+                          onOpenLibrary={() =>
+                            setPickerConfig({ isOpen: true, category: 'worship', songIndex: idx })
+                          }
+                        />
+                      </div>
                     </div>
 
-                    <span className="text-xs font-bold text-slate-300 dark:text-slate-600 w-4 text-center shrink-0">
-                      {String(idx + 1).padStart(2, '0')}
-                    </span>
+                    {/* Bottom Row on Mobile / Inline on Desktop: Key, Category, Move, Remove */}
+                    <div className="flex items-center justify-between sm:justify-start gap-2 pt-1 sm:pt-0 border-t sm:border-t-0 border-slate-100 dark:border-slate-800/60 w-full sm:w-auto shrink-0 pl-6 sm:pl-0">
+                      {/* Performed Key Field */}
+                      <div className="w-20 shrink-0" title="Performed Key (defaults to Original Key)">
+                        <input
+                          type="text"
+                          value={worshipSongKeys[idx] || ''}
+                          onChange={(e) => handleWorshipKeyChange(idx, e.target.value)}
+                          placeholder="Key"
+                          className="w-full px-2 py-1.5 text-xs font-bold text-indigo-700 dark:text-indigo-300 bg-indigo-50/70 dark:bg-indigo-950/70 border border-indigo-200 dark:border-indigo-800 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500/20 text-center"
+                        />
+                      </div>
 
-                    <div className="flex-1 min-w-0">
-                      <SongAutocomplete
-                        value={song}
-                        onChange={(val) => handleWorshipChange(idx, val)}
-                        category="worship"
-                        serviceDate={serviceDate}
-                        serviceType={serviceType}
-                        allSongs={allSongs}
-                        schedules={schedules}
-                        excludeScheduleId={editingSchedule?.id}
-                        placeholder="Search or enter worship song..."
-                        onOpenLibrary={() =>
-                          setPickerConfig({ isOpen: true, category: 'worship', songIndex: idx })
+                      {/* Category Switcher */}
+                      <select
+                        value="worship"
+                        onChange={(e) =>
+                          changeSongCategory('worship', idx, e.target.value as 'praise' | 'worship')
                         }
-                      />
-                    </div>
+                        className="text-[11px] font-semibold py-1.5 px-2 rounded-lg border border-indigo-200 dark:border-indigo-900/80 bg-indigo-50 dark:bg-indigo-950/60 text-indigo-800 dark:text-indigo-300 outline-none cursor-pointer shrink-0"
+                        title="Change Category"
+                      >
+                        <option value="praise">Praise</option>
+                        <option value="worship">Worship</option>
+                      </select>
 
-                    {/* Performed Key Field */}
-                    <div className="w-20 shrink-0" title="Performed Key (defaults to Original Key)">
-                      <input
-                        type="text"
-                        value={worshipSongKeys[idx] || ''}
-                        onChange={(e) => handleWorshipKeyChange(idx, e.target.value)}
-                        placeholder="Key"
-                        className="w-full px-2 py-1.5 text-xs font-bold text-indigo-700 dark:text-indigo-300 bg-indigo-50/70 dark:bg-indigo-950/70 border border-indigo-200 dark:border-indigo-800 rounded-lg outline-none focus:ring-2 focus:ring-indigo-500/20 text-center"
-                      />
-                    </div>
+                      {/* Move Up/Down Controls */}
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => moveSongUp('worship', idx)}
+                          className="p-1.5 min-w-[32px] min-h-[32px] flex items-center justify-center text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 bg-slate-50 dark:bg-slate-800/50 sm:bg-transparent rounded transition-colors cursor-pointer"
+                          title="Move Up"
+                        >
+                          <ChevronUp className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => moveSongDown('worship', idx)}
+                          className="p-1.5 min-w-[32px] min-h-[32px] flex items-center justify-center text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 bg-slate-50 dark:bg-slate-800/50 sm:bg-transparent rounded transition-colors cursor-pointer"
+                          title="Move Down"
+                        >
+                          <ChevronDown className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
 
-                    {/* Category Switcher */}
-                    <select
-                      value="worship"
-                      onChange={(e) =>
-                        changeSongCategory('worship', idx, e.target.value as 'praise' | 'worship')
-                      }
-                      className="text-[11px] font-semibold py-1 px-2 rounded-lg border border-indigo-200 dark:border-indigo-900/80 bg-indigo-50 dark:bg-indigo-950/60 text-indigo-800 dark:text-indigo-300 outline-none cursor-pointer shrink-0"
-                      title="Change Category"
-                    >
-                      <option value="praise">Praise</option>
-                      <option value="worship">Worship</option>
-                    </select>
-
-                    {/* Move Up/Down Controls */}
-                    <div className="flex items-center gap-0.5 shrink-0">
                       <button
                         type="button"
-                        onClick={() => moveSongUp('worship', idx)}
-                        className="p-1 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 rounded transition-colors cursor-pointer"
-                        title="Move Up"
+                        onClick={() => removeWorshipSong(idx)}
+                        className="p-1.5 min-w-[32px] min-h-[32px] flex items-center justify-center text-slate-300 dark:text-slate-600 hover:text-rose-500 dark:hover:text-rose-400 rounded transition-colors cursor-pointer shrink-0 ml-auto sm:ml-0"
+                        aria-label="Remove song"
                       >
-                        <ChevronUp className="w-3.5 h-3.5" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => moveSongDown('worship', idx)}
-                        className="p-1 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 rounded transition-colors cursor-pointer"
-                        title="Move Down"
-                      >
-                        <ChevronDown className="w-3.5 h-3.5" />
+                        <Trash2 className="w-4 h-4" />
                       </button>
                     </div>
-
-                    <button
-                      type="button"
-                      onClick={() => removeWorshipSong(idx)}
-                      className="p-1 text-slate-300 dark:text-slate-600 hover:text-rose-500 dark:hover:text-rose-400 rounded transition-colors cursor-pointer shrink-0"
-                      aria-label="Remove song"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
                   </div>
                 );
               })}
@@ -1424,7 +1859,7 @@ export const SchedulerView: React.FC<SchedulerViewProps> = ({
       </div>
 
       {/* 3. Ministry Assignment Section */}
-      <div className="p-6 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs space-y-5">
+      <div data-tour="team-assignments-panel" className="p-6 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs space-y-5">
         <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-100 dark:border-slate-800">
           <div>
             <h3 className="text-xs font-bold uppercase tracking-wider text-slate-800 dark:text-slate-200 flex items-center gap-2">
@@ -1432,26 +1867,35 @@ export const SchedulerView: React.FC<SchedulerViewProps> = ({
               <span>Ministry Assignments</span>
             </h3>
             <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5 font-medium">
-              Assign members to worship team roles. Click "+ Add Member" to assign multiple members to a single ministry.
+              Assign members to worship team roles. System automatically manages Praise & Worship sections.
             </p>
           </div>
 
-          <label className="inline-flex items-center gap-2 text-xs font-medium text-slate-500 dark:text-slate-400 cursor-pointer select-none">
-            <input
-              type="checkbox"
-              checked={isSmartFilter}
-              onChange={(e) => setIsSmartFilter(e.target.checked)}
-              className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
-            />
-            <Filter className="w-3.5 h-3.5 text-indigo-500" />
-            <span>Smart filter members by role label</span>
-          </label>
+          <div className="flex flex-wrap items-center gap-3">
+            <label className="inline-flex items-center gap-2 text-xs font-medium text-slate-500 dark:text-slate-400 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={isSmartFilter}
+                onChange={(e) => setIsSmartFilter(e.target.checked)}
+                className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+              />
+              <Filter className="w-3.5 h-3.5 text-indigo-500" />
+              <span>Smart filter members</span>
+            </label>
+          </div>
         </div>
 
         <div className="space-y-4">
           {ministryRows.map((row) => {
             const availableMembersForRole = getFilteredMembers(row.role);
             const currentAssigned = getAssignmentMembers(row);
+
+            const isLeaderRow = (row.role || '').toLowerCase().includes('leader');
+            const isTwoLeadersActive =
+              ministryRows.some((r) => (r.role || '').toLowerCase().includes('praise') && !(r.role || '').toLowerCase().includes('worship') && (r.role || '').toLowerCase().includes('leader')) &&
+              ministryRows.some((r) => (r.role || '').toLowerCase().includes('worship') && !(r.role || '').toLowerCase().includes('praise') && (r.role || '').toLowerCase().includes('leader'));
+
+            const hideAddMemberButton = isLeaderRow && (isTwoLeadersActive || currentAssigned.length >= 2);
 
             return (
               <div
@@ -1465,7 +1909,7 @@ export const SchedulerView: React.FC<SchedulerViewProps> = ({
                       type="text"
                       value={row.role}
                       onChange={(e) => handleMinistryRoleChange(row.id, e.target.value)}
-                      placeholder="Ministry Role (e.g. Song Leader, Backup Singer/s)"
+                      placeholder="Ministry Role (e.g. Song Leader (Praise), Backup Singer/s)"
                       className="w-full px-3 py-1.5 text-xs font-bold rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none"
                     />
                   </div>
@@ -1485,41 +1929,129 @@ export const SchedulerView: React.FC<SchedulerViewProps> = ({
                 <div className="space-y-2 pt-2 border-t border-slate-200/60 dark:border-slate-800/60">
                   <div className="flex items-center justify-between text-xs text-slate-500 font-semibold">
                     <span>Assigned Member(s) ({currentAssigned.length})</span>
-                    <button
-                      type="button"
-                      onClick={() => handleAddMemberToMinistry(row.id)}
-                      className="inline-flex items-center gap-1 text-[11px] font-bold text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 transition-colors cursor-pointer"
-                    >
-                      <Plus className="w-3.5 h-3.5" />
-                      <span>Add Member</span>
-                    </button>
+                    {!hideAddMemberButton && (
+                      <button
+                        type="button"
+                        onClick={() => handleAddMemberToMinistry(row.id)}
+                        className="inline-flex items-center gap-1 text-[11px] font-bold text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 transition-colors cursor-pointer"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>Add Member</span>
+                      </button>
+                    )}
                   </div>
 
                   {currentAssigned.length === 0 ? (
                     <div className="flex items-center justify-between p-2 rounded-lg bg-white/60 dark:bg-slate-900/40 border border-dashed border-slate-200 dark:border-slate-700/80">
                       <span className="text-xs font-bold text-slate-400 dark:text-slate-500">N/A</span>
-                      <button
-                        type="button"
-                        onClick={() => handleAddMemberToMinistry(row.id)}
-                        className="px-2 py-0.5 text-[10px] font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 rounded border border-indigo-200 dark:border-indigo-800 cursor-pointer"
-                      >
-                        + Add Member
-                      </button>
+                      {!hideAddMemberButton && (
+                        <button
+                          type="button"
+                          onClick={() => handleAddMemberToMinistry(row.id)}
+                          className="px-2 py-0.5 text-[10px] font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 rounded border border-indigo-200 dark:border-indigo-800 cursor-pointer"
+                        >
+                          + Add Member
+                        </button>
+                      )}
                     </div>
                   ) : (
                     <div className="space-y-2">
                       {currentAssigned.map((am, mIdx) => {
-                        // Collect member IDs assigned anywhere in the entire line-up EXCEPT this specific slot (row.id, mIdx)
-                        const assignedElsewhereIds = new Set<string>();
+                        const targetRoleLower = (row.role || '').toLowerCase();
+                        const isTargetPraiseLeader = targetRoleLower.includes('leader') && targetRoleLower.includes('praise') && !targetRoleLower.includes('worship');
+                        const isTargetWorshipLeader = targetRoleLower.includes('leader') && targetRoleLower.includes('worship') && !targetRoleLower.includes('praise');
+                        const isTargetGenericLeader = targetRoleLower.includes('leader') && !isTargetPraiseLeader && !isTargetWorshipLeader;
+
+                        const isTargetBackup = targetRoleLower.includes('backup') || targetRoleLower.includes('vocalist');
+                        const isTargetPraiseBackup = isTargetBackup && targetRoleLower.includes('praise') && !targetRoleLower.includes('worship');
+                        const isTargetWorshipBackup = isTargetBackup && targetRoleLower.includes('worship') && !targetRoleLower.includes('praise');
+                        const isTargetGenericBackup = isTargetBackup && !isTargetPraiseBackup && !isTargetWorshipBackup;
+
+                        let praiseLeaderId = '';
+                        let worshipLeaderId = '';
+                        let genericLeaderId = '';
+
                         ministryRows.forEach((r) => {
+                          const rLower = (r.role || '').toLowerCase();
+                          const membersList = getAssignmentMembers(r);
+                          const firstId = membersList[0]?.memberId;
+                          if (!firstId) return;
+
+                          if (rLower.includes('leader') && rLower.includes('praise') && !rLower.includes('worship')) {
+                            praiseLeaderId = firstId;
+                          } else if (rLower.includes('leader') && rLower.includes('worship') && !rLower.includes('praise')) {
+                            worshipLeaderId = firstId;
+                          } else if (rLower.includes('leader')) {
+                            genericLeaderId = firstId;
+                          }
+                        });
+
+                        const assignedElsewhereIds = new Set<string>();
+
+                        ministryRows.forEach((r) => {
+                          const rLower = (r.role || '').toLowerCase();
+                          const isRPraiseLeader = rLower.includes('leader') && rLower.includes('praise') && !rLower.includes('worship');
+                          const isRWorshipLeader = rLower.includes('leader') && rLower.includes('worship') && !rLower.includes('praise');
+                          const isRGenericLeader = rLower.includes('leader') && !isRPraiseLeader && !isRWorshipLeader;
+
+                          const isRBackup = rLower.includes('backup') || rLower.includes('vocalist');
+                          const isRPraiseBackup = isRBackup && rLower.includes('praise') && !rLower.includes('worship');
+                          const isRWorshipBackup = isRBackup && rLower.includes('worship') && !rLower.includes('praise');
+                          const isRGenericBackup = isRBackup && !isRPraiseBackup && !isRWorshipBackup;
+
                           const rMembers = getAssignmentMembers(r);
                           rMembers.forEach((m, idx) => {
-                            if (r.id === row.id && idx === mIdx) {
+                            if (!m.memberId) return;
+                            if (r.id === row.id && idx === mIdx) return;
+                            if (r.id === row.id && idx !== mIdx) {
+                              assignedElsewhereIds.add(m.memberId);
                               return;
                             }
-                            if (m.memberId) {
-                              assignedElsewhereIds.add(m.memberId);
+
+                            if (isTargetPraiseLeader) {
+                              if (m.memberId === worshipLeaderId || isRWorshipLeader || isRPraiseBackup) {
+                                assignedElsewhereIds.add(m.memberId);
+                              }
+                              return;
                             }
+
+                            if (isTargetWorshipLeader) {
+                              if (m.memberId === praiseLeaderId || isRPraiseLeader || isRWorshipBackup) {
+                                assignedElsewhereIds.add(m.memberId);
+                              }
+                              return;
+                            }
+
+                            if (isTargetGenericLeader) {
+                              if (isRGenericBackup || isRPraiseBackup || isRWorshipBackup) {
+                                assignedElsewhereIds.add(m.memberId);
+                              }
+                              return;
+                            }
+
+                            if (isTargetPraiseBackup) {
+                              if (m.memberId === praiseLeaderId || isRPraiseLeader) {
+                                assignedElsewhereIds.add(m.memberId);
+                              }
+                              return;
+                            }
+
+                            if (isTargetWorshipBackup) {
+                              if (m.memberId === worshipLeaderId || isRWorshipLeader) {
+                                assignedElsewhereIds.add(m.memberId);
+                              }
+                              return;
+                            }
+
+                            if (isTargetGenericBackup) {
+                              if (m.memberId === genericLeaderId || m.memberId === praiseLeaderId || m.memberId === worshipLeaderId || isRGenericLeader || isRPraiseLeader || isRWorshipLeader) {
+                                assignedElsewhereIds.add(m.memberId);
+                              }
+                              return;
+                            }
+
+                            // For normal tag-based roles (Guitarist, Keyboardist, Bassist, Drummer, Audio/Live Technician, Lyricist, etc.):
+                            // Members assigned in other ministry rows (r.id !== row.id) are NOT excluded.
                           });
                         });
 
@@ -1529,7 +2061,7 @@ export const SchedulerView: React.FC<SchedulerViewProps> = ({
 
                         if (am.memberId) {
                           const currentMemberObj = members.find((m) => m.id === am.memberId);
-                          if (currentMemberObj && !selectableMembers.some((m) => m.id === am.memberId)) {
+                          if (currentMemberObj && !assignedElsewhereIds.has(am.memberId) && !selectableMembers.some((m) => m.id === am.memberId)) {
                             selectableMembers = [currentMemberObj, ...selectableMembers];
                           }
                         }
@@ -1543,10 +2075,10 @@ export const SchedulerView: React.FC<SchedulerViewProps> = ({
                             >
                               <option value="">-- Select Member --</option>
                               {selectableMembers.map((m) => {
-                                const isDA = isMemberUnderDisciplinary(m);
+                                const isDA = isMemberUnderDisciplinary(m, serviceDate);
                                 return (
                                   <option key={m.id} value={m.id}>
-                                    {m.name}{isDA ? ' (DA)' : ''} ({sortTags(m.labels).join(', ')})
+                                    {m.name}{isDA ? ' (DA Active)' : ''} ({sortTags(m.labels).join(', ')})
                                   </option>
                                 );
                               })}
@@ -1600,6 +2132,7 @@ export const SchedulerView: React.FC<SchedulerViewProps> = ({
         <div className="flex flex-wrap items-center gap-3">
           <button
             type="button"
+            data-tour="save-lineup-btn"
             onClick={handleSave}
             className="inline-flex items-center gap-2 px-5 py-2 text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg shadow-xs transition-colors cursor-pointer"
           >
@@ -1609,6 +2142,7 @@ export const SchedulerView: React.FC<SchedulerViewProps> = ({
 
           <button
             type="button"
+            data-tour="export-pdf-btn"
             onClick={handleExportPDF}
             className="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/80 hover:bg-indigo-100 dark:hover:bg-indigo-900/80 border border-indigo-200/80 dark:border-indigo-800/80 rounded-lg transition-colors cursor-pointer"
           >
@@ -1618,12 +2152,26 @@ export const SchedulerView: React.FC<SchedulerViewProps> = ({
 
           <button
             type="button"
+            data-tour="export-png-btn"
             onClick={handleExportPNG}
             className="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 rounded-lg transition-colors cursor-pointer"
           >
             <Image className="w-4 h-4 text-slate-500 dark:text-slate-400" />
             <span>Export as PNG</span>
           </button>
+
+          {onRefreshLineups && (
+            <button
+              type="button"
+              data-tour="refresh-lineups-btn"
+              onClick={onRefreshLineups}
+              className="inline-flex items-center gap-2 px-4 py-2 text-sm font-bold text-indigo-700 dark:text-indigo-300 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/80 dark:hover:bg-indigo-900 border border-indigo-200/80 dark:border-indigo-800/80 rounded-lg transition-colors cursor-pointer"
+              title="Refresh all saved line-ups using current member database and hierarchy"
+            >
+              <RefreshCw className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+              <span>Refresh Line-ups</span>
+            </button>
+          )}
         </div>
 
         <button
@@ -1726,6 +2274,70 @@ export const SchedulerView: React.FC<SchedulerViewProps> = ({
           setIsConfirmReplaceOpen(false);
         }}
       />
+
+      {/* Duplicate Schedule Conflict Modal */}
+      {isDuplicateModalOpen && duplicateConflictSchedule && (
+        <div className="fixed inset-0 z-[999] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200">
+          <div
+            className="w-full max-w-lg bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800 overflow-hidden transform animate-in zoom-in-95 duration-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 dark:border-slate-800 bg-amber-50/50 dark:bg-amber-950/20">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-amber-100 dark:bg-amber-900/50 text-amber-600 dark:text-amber-400">
+                  <AlertTriangle className="w-5 h-5 shrink-0" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-slate-900 dark:text-slate-100 text-base">
+                    Lineup Already Exists
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    {serviceType} — {formatDateDisplayManila(serviceDate, { month: 'long', day: 'numeric', year: 'numeric' })}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsDuplicateModalOpen(false)}
+                className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <p className="text-sm text-slate-700 dark:text-slate-200 font-medium leading-relaxed">
+                A lineup already exists for <strong className="text-indigo-600 dark:text-indigo-400">{serviceType} on {formatDateDisplayManila(serviceDate, { month: 'long', day: 'numeric', year: 'numeric' })}</strong>.
+              </p>
+              <p className="text-xs text-slate-500 dark:text-slate-400 leading-normal">
+                Would you like to load the existing lineup into the editor to view or modify it, or cancel to pick another date?
+              </p>
+
+              <div className="flex flex-col sm:flex-row gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsDuplicateModalOpen(false);
+                    if (onSelectSchedule && duplicateConflictSchedule) {
+                      onSelectSchedule(duplicateConflictSchedule);
+                    }
+                  }}
+                  className="flex-1 px-4 py-2.5 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-xs transition-colors cursor-pointer flex items-center justify-center gap-2"
+                >
+                  Load Existing Lineup
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsDuplicateModalOpen(false)}
+                  className="px-4 py-2.5 text-xs font-semibold text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-xl transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* YouTube / YouTube Music Playlist Import Modal */}
       <PlaylistImportModal

@@ -8,7 +8,8 @@ const STORAGE_KEYS = {
   LABELS: 'wwcf_labels_v1',
   SCHEDULES: 'wwcf_schedules_v1',
   DARK_MODE: 'wwcf_dark_mode_v1',
-  DRAFT: 'wwcf_draft_schedule_v1'
+  DRAFT_V2: 'wwcf_draft_schedule_v2',
+  DRAFT_V1: 'wwcf_draft_schedule_v1'
 };
 
 export class LocalStorageRepository implements IDataRepository {
@@ -88,7 +89,10 @@ export class LocalStorageRepository implements IDataRepository {
 
   async getDraftSchedule(): Promise<Partial<Schedule> | null> {
     try {
-      const data = localStorage.getItem(STORAGE_KEYS.DRAFT);
+      let data = localStorage.getItem(STORAGE_KEYS.DRAFT_V2);
+      if (!data) {
+        data = localStorage.getItem(STORAGE_KEYS.DRAFT_V1);
+      }
       return data ? JSON.parse(data) : null;
     } catch {
       return null;
@@ -98,9 +102,10 @@ export class LocalStorageRepository implements IDataRepository {
   async saveDraftSchedule(draft: Partial<Schedule> | null): Promise<void> {
     try {
       if (!draft) {
-        localStorage.removeItem(STORAGE_KEYS.DRAFT);
+        localStorage.removeItem(STORAGE_KEYS.DRAFT_V2);
+        localStorage.removeItem(STORAGE_KEYS.DRAFT_V1);
       } else {
-        localStorage.setItem(STORAGE_KEYS.DRAFT, JSON.stringify(draft));
+        localStorage.setItem(STORAGE_KEYS.DRAFT_V2, JSON.stringify(draft));
       }
     } catch (e) {
       console.error('[LocalStorageRepository] Failed to save draft:', e);

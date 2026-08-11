@@ -106,7 +106,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   };
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-300">
+    <div data-tour="dashboard-view" className="space-y-6 animate-in fade-in duration-300">
       {/* Banner Card */}
       <div className="relative overflow-hidden rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 sm:p-8 shadow-xs">
         <div className="relative z-10 max-w-2xl space-y-3">
@@ -123,6 +123,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           <div className="pt-2 flex flex-wrap gap-3">
             <button
               onClick={() => setActiveTab('scheduler')}
+              data-tour="create-lineup-btn"
               className="inline-flex items-center gap-2 px-4 py-2 text-xs sm:text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg shadow-xs transition-colors cursor-pointer"
             >
               <Plus className="w-4 h-4" />
@@ -145,7 +146,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           Overall Statistics
         </h3>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="p-5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs flex items-center gap-4">
+          <div data-tour="dashboard-saved-card" className="p-5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs flex items-center gap-4">
             <div className="w-10 h-10 rounded-lg bg-emerald-50 dark:bg-emerald-950/80 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
               <BookmarkCheck className="w-5 h-5" />
             </div>
@@ -159,7 +160,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             </div>
           </div>
 
-          <div className="p-5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs flex items-center gap-4">
+          <div data-tour="dashboard-empty-card" className="p-5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs flex items-center gap-4">
             <div className="w-10 h-10 rounded-lg bg-amber-50 dark:bg-amber-950/80 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
               <CalendarX className="w-5 h-5" />
             </div>
@@ -210,7 +211,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         </h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
           {/* Sunday Service Card */}
-          <div className="p-5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs space-y-4">
+          <div data-tour="dashboard-sunday-card" className="p-5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs space-y-4">
             <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
               <div className="flex items-center gap-2">
                 <Calendar className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
@@ -308,7 +309,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </div>
 
           {/* Midweek Prayer Service Card */}
-          <div className="p-5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs space-y-4">
+          <div data-tour="dashboard-midweek-card" className="p-5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs space-y-4">
             <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
               <div className="flex items-center gap-2">
                 <Calendar className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
@@ -535,9 +536,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               </div>
             ) : (
               recentSavedSchedules.map((schedule) => {
-                const songLead = schedule.ministryAssignments.find(
-                  (m) => m.role.toLowerCase().includes('lead') || m.role.toLowerCase().includes('worship')
+                const songLeaderAssignments = (schedule.ministryAssignments || []).filter(
+                  (m) => (m.role || '').toLowerCase().includes('leader')
                 );
+                const songLeaderDisplay = songLeaderAssignments
+                  .map((m) => formatAssignmentMemberNames(m))
+                  .filter((n) => Boolean(n) && n !== 'Unassigned' && n !== '—')
+                  .join(', ');
                 return (
                   <div
                     key={schedule.id}
@@ -578,10 +583,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                       </div>
                     </div>
 
-                    {songLead && (
+                    {Boolean(songLeaderDisplay) && (
                       <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-800 text-xs flex items-center justify-between text-slate-400 dark:text-slate-500">
                         <span>
-                          Song Leader: <strong className="text-slate-700 dark:text-slate-300">{formatAssignmentMemberNames(songLead)}</strong>
+                          Song Leader: <strong className="text-slate-700 dark:text-slate-300">{songLeaderDisplay}</strong>
                         </span>
                         <span>{schedule.ministryAssignments.length} Assigned Roles</span>
                       </div>
