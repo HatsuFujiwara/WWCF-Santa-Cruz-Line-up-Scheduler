@@ -12,8 +12,7 @@ import {
   X,
   Database,
   Settings,
-  HelpCircle,
-  RefreshCw
+  HelpCircle
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -26,7 +25,6 @@ interface SidebarProps {
   onOpenBackupRestore: () => void;
   onOpenSettings: () => void;
   onOpenHelp: () => void;
-  onRefreshLineups: () => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -38,8 +36,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   setIsOpen,
   onOpenBackupRestore,
   onOpenSettings,
-  onOpenHelp,
-  onRefreshLineups
+  onOpenHelp
 }) => {
   const navItems = [
     { id: 'dashboard' as ActiveTab, label: 'Dashboard', icon: LayoutDashboard },
@@ -151,20 +148,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <div className="flex items-center gap-2">
               <Database className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
               <span>Backup & Restore Data</span>
-            </div>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => {
-              onRefreshLineups();
-              setIsOpen(false);
-            }}
-            className="w-full flex items-center justify-between px-3 py-2 rounded-lg bg-indigo-50/80 hover:bg-indigo-100 dark:bg-indigo-950/60 dark:hover:bg-indigo-900/60 border border-indigo-100 dark:border-indigo-900 text-xs font-semibold text-indigo-700 dark:text-indigo-300 transition-colors cursor-pointer"
-          >
-            <div className="flex items-center gap-2">
-              <RefreshCw className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
-              <span>Refresh Line-ups</span>
             </div>
           </button>
 

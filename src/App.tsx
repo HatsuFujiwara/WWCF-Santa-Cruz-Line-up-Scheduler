@@ -20,7 +20,7 @@ import { WelcomeGuideModal } from './components/WelcomeGuideModal';
 import { exportLineupAsPDF, exportLineupAsPNG } from './services/exportService';
 import { sortTags } from './utils/tagUtils';
 import { getManilaNowISO, getManilaTodayString } from './utils/dateUtils';
-import { getNextAvailableServiceDate, getSmartInitialServiceDetails, ensureMonthlyPlaceholders, isScheduleEmpty, refreshSchedulesWithMembers } from './utils/scheduleUtils';
+import { getNextAvailableServiceDate, getSmartInitialServiceDetails, ensureMonthlyPlaceholders, isScheduleEmpty } from './utils/scheduleUtils';
 
 export default function App() {
   // Navigation & UI state
@@ -144,36 +144,6 @@ export default function App() {
 
   const dismissToast = (id: string) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
-  };
-
-  // Refresh All Saved Line-ups using current member database and hierarchy
-  const handleRefreshLineups = () => {
-    try {
-      const currentSchedules = StorageService.getSchedules();
-      const currentMembers = StorageService.getMembers();
-
-      const { refreshedSchedules, updatedCount } = refreshSchedulesWithMembers(
-        currentSchedules,
-        currentMembers
-      );
-
-      if (refreshedSchedules && refreshedSchedules.length > 0) {
-        StorageService.saveSchedules(refreshedSchedules);
-        setSchedules(refreshedSchedules);
-      }
-
-      if (updatedCount > 0) {
-        showToast(
-          `Line-ups refreshed successfully. ${updatedCount} line-up${updatedCount > 1 ? 's' : ''} updated.`,
-          'success'
-        );
-      } else {
-        showToast('Line-ups are already up to date.', 'info');
-      }
-    } catch (error) {
-      console.error('Failed to refresh line-ups:', error);
-      showToast('Failed to refresh line-ups. Original data preserved.', 'danger');
-    }
   };
 
   // Schedule Operations
@@ -391,7 +361,6 @@ export default function App() {
         onOpenBackupRestore={() => setIsBackupModalOpen(true)}
         onOpenSettings={() => setIsSettingsOpen(true)}
         onOpenHelp={() => setIsHelpMenuOpen(true)}
-        onRefreshLineups={handleRefreshLineups}
       />
 
       {/* Main Content Area */}
@@ -405,7 +374,6 @@ export default function App() {
           onOpenBackupRestore={() => setIsBackupModalOpen(true)}
           onOpenSettings={() => setIsSettingsOpen(true)}
           onOpenHelp={() => setIsHelpMenuOpen(true)}
-          onRefreshLineups={handleRefreshLineups}
         />
 
         <main className="flex-1 p-4 sm:p-8 max-w-7xl w-full mx-auto">
@@ -433,7 +401,6 @@ export default function App() {
               showToast={showToast}
               onSelectSchedule={handleEditScheduleFromList}
               onViewSchedules={() => setActiveTab('schedules')}
-              onRefreshLineups={handleRefreshLineups}
             />
           )}
 
@@ -457,7 +424,6 @@ export default function App() {
               onExportPDF={handleExportPDF}
               onExportPNG={handleExportPNG}
               onUpdateSchedules={handleUpdateSchedules}
-              onRefreshLineups={handleRefreshLineups}
             />
           )}
 

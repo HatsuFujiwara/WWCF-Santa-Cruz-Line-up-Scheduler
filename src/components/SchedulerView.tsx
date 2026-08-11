@@ -35,8 +35,7 @@ import {
   FileText,
   Layers,
   X,
-  AlertTriangle,
-  RefreshCw
+  AlertTriangle
 } from 'lucide-react';
 
 interface LineupConflictModalProps {
@@ -153,7 +152,6 @@ interface SchedulerViewProps {
   showToast: (msg: string, type?: 'success' | 'danger' | 'info') => void;
   onSelectSchedule?: (schedule: Schedule) => void;
   onViewSchedules?: () => void;
-  onRefreshLineups?: () => void;
 }
 
 const DEFAULT_ROLES: { role: string; targetLabel: string }[] = [
@@ -189,8 +187,7 @@ export const SchedulerView: React.FC<SchedulerViewProps> = ({
   onRefreshSongs,
   showToast,
   onSelectSchedule,
-  onViewSchedules,
-  onRefreshLineups
+  onViewSchedules
 }) => {
   // Manual Date Override Flag
   const [isDateManuallyEdited, setIsDateManuallyEdited] = useState<boolean>(false);
@@ -2159,19 +2156,6 @@ export const SchedulerView: React.FC<SchedulerViewProps> = ({
             <Image className="w-4 h-4 text-slate-500 dark:text-slate-400" />
             <span>Export as PNG</span>
           </button>
-
-          {onRefreshLineups && (
-            <button
-              type="button"
-              data-tour="refresh-lineups-btn"
-              onClick={onRefreshLineups}
-              className="inline-flex items-center gap-2 px-4 py-2 text-sm font-bold text-indigo-700 dark:text-indigo-300 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/80 dark:hover:bg-indigo-900 border border-indigo-200/80 dark:border-indigo-800/80 rounded-lg transition-colors cursor-pointer"
-              title="Refresh all saved line-ups using current member database and hierarchy"
-            >
-              <RefreshCw className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
-              <span>Refresh Line-ups</span>
-            </button>
-          )}
         </div>
 
         <button

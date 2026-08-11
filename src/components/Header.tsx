@@ -1,6 +1,6 @@
 import React from 'react';
 import { ActiveTab } from '../types';
-import { Menu, Plus, Check, Database, Settings, HelpCircle, RefreshCw } from 'lucide-react';
+import { Menu, Plus, Check, Database, Settings, HelpCircle } from 'lucide-react';
 
 interface HeaderProps {
   activeTab: ActiveTab;
@@ -11,7 +11,6 @@ interface HeaderProps {
   onOpenBackupRestore: () => void;
   onOpenSettings: () => void;
   onOpenHelp: () => void;
-  onRefreshLineups: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -21,8 +20,7 @@ export const Header: React.FC<HeaderProps> = ({
   onNewSchedule,
   onOpenBackupRestore,
   onOpenSettings,
-  onOpenHelp,
-  onRefreshLineups
+  onOpenHelp
 }) => {
   const titles: Record<ActiveTab, { title: string; subtitle: string }> = {
     dashboard: {
@@ -115,17 +113,6 @@ export const Header: React.FC<HeaderProps> = ({
           >
             <Database className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
             <span className="hidden sm:inline">Backup & Restore</span>
-          </button>
-
-          <button
-            type="button"
-            data-tour="header-refresh-lineups-btn"
-            onClick={onRefreshLineups}
-            className="flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-indigo-700 dark:text-indigo-300 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/80 dark:hover:bg-indigo-900 border border-indigo-200/80 dark:border-indigo-800/80 rounded-lg transition-colors cursor-pointer shadow-2xs"
-            title="Refresh all saved line-ups using current member database and hierarchy"
-          >
-            <RefreshCw className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
-            <span>Refresh Line-ups</span>
           </button>
 
           <button
