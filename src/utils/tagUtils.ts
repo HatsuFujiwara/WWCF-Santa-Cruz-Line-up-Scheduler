@@ -2,6 +2,22 @@ import { DEFAULT_LABELS } from '../data/seedData';
 import { Member } from '../types';
 
 /**
+ * Returns the total count of unique assigned tags/labels a member possesses.
+ */
+export function getMemberTagCount(member: Member): number {
+  if (!member || !member.labels || member.labels.length === 0) {
+    return 0;
+  }
+  const uniqueLabels = new Set(
+    member.labels
+      .filter(Boolean)
+      .map((l) => l.trim().toLowerCase())
+      .filter((l) => l.length > 0)
+  );
+  return uniqueLabels.size;
+}
+
+/**
  * Returns the count of predefined tags a member possesses according to the predefined hierarchy.
  */
 export function getMemberPredefinedTagCount(

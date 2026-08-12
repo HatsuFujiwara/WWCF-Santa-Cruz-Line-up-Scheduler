@@ -1,10 +1,12 @@
 import { Member, isMemberUnderDisciplinary } from '../types';
-import { getMemberHighestTagRank, getMemberPredefinedTagCount } from './tagUtils';
+import { getMemberHighestTagRank, getMemberPredefinedTagCount, getMemberTagCount } from './tagUtils';
 import { getManilaTodayString } from './dateUtils';
 
 export type MemberSortOption =
   | 'name-asc'
   | 'name-desc'
+  | 'tags-desc'
+  | 'tags-asc'
   | 'hierarchy-desc'
   | 'hierarchy-asc'
   | 'status-desc'
@@ -152,6 +154,40 @@ export function filterAndSortMembers(
 
     if (sortOption === 'name-desc') {
       return nameB.localeCompare(nameA, undefined, { numeric: true, sensitivity: 'base' });
+    }
+
+    if (sortOption === 'tags-desc') {
+      // Primary: Most tags first
+      const countA = getMemberTagCount(a);
+      const countB = getMemberTagCount(b);
+      if (countA !== countB) {
+        return countB - countA;
+      }
+      // Secondary: Tag hierarchy priority (lower numerical index = higher rank)
+      const rankA = getMemberHighestTagRank(a);
+      const rankB = getMemberHighestTagRank(b);
+      if (rankA !== rankB) {
+        return rankA - rankB;
+      }
+      // Tertiary: Name A → Z
+      return nameA.localeCompare(nameB, undefined, { numeric: true, sensitivity: 'base' });
+    }
+
+    if (sortOption === 'tags-asc') {
+      // Primary: Least tags first
+      const countA = getMemberTagCount(a);
+      const countB = getMemberTagCount(b);
+      if (countA !== countB) {
+        return countA - countB;
+      }
+      // Secondary: Tag hierarchy priority
+      const rankA = getMemberHighestTagRank(a);
+      const rankB = getMemberHighestTagRank(b);
+      if (rankA !== rankB) {
+        return rankA - rankB;
+      }
+      // Tertiary: Name A → Z
+      return nameA.localeCompare(nameB, undefined, { numeric: true, sensitivity: 'base' });
     }
 
     if (sortOption === 'hierarchy-desc') {

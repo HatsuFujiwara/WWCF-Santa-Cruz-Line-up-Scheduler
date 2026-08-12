@@ -159,10 +159,14 @@ export const MemberEditorView: React.FC<MemberEditorViewProps> = ({
       if (
         saved === 'name-asc' ||
         saved === 'name-desc' ||
+        saved === 'tags-desc' ||
+        saved === 'tags-asc' ||
         saved === 'hierarchy-desc' ||
-        saved === 'hierarchy-asc'
+        saved === 'hierarchy-asc' ||
+        saved === 'status-desc' ||
+        saved === 'status-asc'
       ) {
-        return saved;
+        return saved as MemberSortOption;
       }
     } catch {
       // Fallback default
@@ -610,10 +614,12 @@ export const MemberEditorView: React.FC<MemberEditorViewProps> = ({
                     >
                       <option value="name-asc">Name (A → Z)</option>
                       <option value="name-desc">Name (Z → A)</option>
-                      <option value="status-desc">Status (Disciplinary First)</option>
-                      <option value="status-asc">Status (Active First)</option>
+                      <option value="tags-desc">Most Tags → Least Tags</option>
+                      <option value="tags-asc">Least Tags → Most Tags</option>
                       <option value="hierarchy-desc">Tag Hierarchy (Highest → Lowest)</option>
                       <option value="hierarchy-asc">Tag Hierarchy (Lowest → Highest)</option>
+                      <option value="status-desc">Status (Disciplinary First)</option>
+                      <option value="status-asc">Status (Active First)</option>
                     </select>
                   </div>
 
