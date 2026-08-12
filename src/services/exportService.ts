@@ -11,11 +11,11 @@ function createExportElement(schedule: Schedule): HTMLElement {
   container.style.position = 'fixed';
   container.style.left = '-9999px';
   container.style.top = '-9999px';
-  container.style.width = '720px';
+  container.style.width = '800px';
   container.style.backgroundColor = '#ffffff';
   container.style.color = '#0f172a'; // slate-900
-  container.style.fontFamily = 'ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif';
-  container.style.padding = '28px 32px';
+  container.style.fontFamily = 'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif';
+  container.style.padding = '32px 36px';
   container.style.boxSizing = 'border-box';
 
   const praiseSongs = (schedule.praiseSongs || []).map((s) => s.trim()).filter(Boolean);
@@ -89,20 +89,34 @@ function createExportElement(schedule: Schedule): HTMLElement {
 
   let mainBodyHTML = '';
 
+  const formatSongKey = (key?: string) => {
+    if (!key || !key.trim()) return '';
+    const cleanKey = key.trim();
+    return `<span style="font-size: 11px; font-weight: 600; color: #475569; background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 4px; padding: 1px 6px; margin-left: 6px; white-space: nowrap;">Key: ${escapeHtml(cleanKey)}</span>`;
+  };
+
   const praiseItems = praiseSongs.length > 0
-    ? praiseSongs.map((s, i) => `
-        <li style="font-size: 13px; font-weight: 500; color: #1e293b; line-height: 1.45; word-break: break-word; overflow-wrap: anywhere;">
-          <span style="font-weight: 700; color: #1b75bc; margin-right: 6px;">${i + 1}.</span>${escapeHtml(s)}
-        </li>
-      `).join('')
+    ? praiseSongs.map((s, i) => {
+        const keyTag = formatSongKey(schedule.praiseSongKeys?.[i]);
+        return `
+          <li style="font-size: 13.5px; font-weight: 500; color: #1e293b; line-height: 1.5; word-break: break-word; overflow-wrap: anywhere; display: flex; align-items: baseline; flex-wrap: wrap;">
+            <span><strong style="color: #1b75bc; margin-right: 6px;">${i + 1}.</strong>${escapeHtml(s)}</span>
+            ${keyTag}
+          </li>
+        `;
+      }).join('')
     : '<div style="font-size: 13px; color: #94a3b8; font-style: italic;">N/A</div>';
 
   const worshipItems = worshipSongs.length > 0
-    ? worshipSongs.map((s, i) => `
-        <li style="font-size: 13px; font-weight: 500; color: #1e293b; line-height: 1.45; word-break: break-word; overflow-wrap: anywhere;">
-          <span style="font-weight: 700; color: #1b75bc; margin-right: 6px;">${i + 1}.</span>${escapeHtml(s)}
-        </li>
-      `).join('')
+    ? worshipSongs.map((s, i) => {
+        const keyTag = formatSongKey(schedule.worshipSongKeys?.[i]);
+        return `
+          <li style="font-size: 13.5px; font-weight: 500; color: #1e293b; line-height: 1.5; word-break: break-word; overflow-wrap: anywhere; display: flex; align-items: baseline; flex-wrap: wrap;">
+            <span><strong style="color: #1b75bc; margin-right: 6px;">${i + 1}.</strong>${escapeHtml(s)}</span>
+            ${keyTag}
+          </li>
+        `;
+      }).join('')
     : '<div style="font-size: 13px; color: #94a3b8; font-style: italic;">N/A</div>';
 
   if (hasTwoSeparateLeaders) {
@@ -111,71 +125,79 @@ function createExportElement(schedule: Schedule): HTMLElement {
     const wLeaders = worshipLeaders.length > 0 ? worshipLeaders : (genericLeaders[1] ? [genericLeaders[1]] : []);
 
     const praiseLeaderLines = pLeaders.length > 0
-      ? pLeaders.map(n => `<div style="font-size: 13.5px; font-weight: 700; color: #0f172a; line-height: 1.4; word-break: break-word; overflow-wrap: anywhere;">${escapeHtml(n)}</div>`).join('')
+      ? pLeaders.map(n => `<div style="font-size: 14px; font-weight: 700; color: #0f172a; line-height: 1.45; word-break: break-word; overflow-wrap: anywhere;">${escapeHtml(n)}</div>`).join('')
       : '<div style="font-size: 13px; font-weight: 500; color: #94a3b8;">N/A</div>';
 
     const worshipLeaderLines = wLeaders.length > 0
-      ? wLeaders.map(n => `<div style="font-size: 13.5px; font-weight: 700; color: #0f172a; line-height: 1.4; word-break: break-word; overflow-wrap: anywhere;">${escapeHtml(n)}</div>`).join('')
+      ? wLeaders.map(n => `<div style="font-size: 14px; font-weight: 700; color: #0f172a; line-height: 1.45; word-break: break-word; overflow-wrap: anywhere;">${escapeHtml(n)}</div>`).join('')
       : '<div style="font-size: 13px; font-weight: 500; color: #94a3b8;">N/A</div>';
 
     const praiseBackupLines = praiseBackups.length > 0
-      ? praiseBackups.map(n => `<div style="font-size: 13.5px; font-weight: 600; color: #0f172a; line-height: 1.45; margin-bottom: 3px; word-break: break-word; overflow-wrap: anywhere;">${escapeHtml(n)}</div>`).join('')
-      : (genericBackups.length > 0 ? genericBackups.map(n => `<div style="font-size: 13.5px; font-weight: 600; color: #0f172a; line-height: 1.45; margin-bottom: 3px; word-break: break-word; overflow-wrap: anywhere;">${escapeHtml(n)}</div>`).join('') : '<div style="font-size: 13px; font-weight: 500; color: #94a3b8;">N/A</div>');
+      ? praiseBackups.map(n => `<div style="font-size: 13.5px; font-weight: 600; color: #0f172a; line-height: 1.45; word-break: break-word; overflow-wrap: anywhere;">${escapeHtml(n)}</div>`).join('')
+      : (genericBackups.length > 0 ? genericBackups.map(n => `<div style="font-size: 13.5px; font-weight: 600; color: #0f172a; line-height: 1.45; word-break: break-word; overflow-wrap: anywhere;">${escapeHtml(n)}</div>`).join('') : '<div style="font-size: 13px; font-weight: 500; color: #94a3b8;">N/A</div>');
 
     const worshipBackupLines = worshipBackups.length > 0
-      ? worshipBackups.map(n => `<div style="font-size: 13.5px; font-weight: 600; color: #0f172a; line-height: 1.45; margin-bottom: 3px; word-break: break-word; overflow-wrap: anywhere;">${escapeHtml(n)}</div>`).join('')
-      : (genericBackups.length > 0 ? genericBackups.map(n => `<div style="font-size: 13.5px; font-weight: 600; color: #0f172a; line-height: 1.45; margin-bottom: 3px; word-break: break-word; overflow-wrap: anywhere;">${escapeHtml(n)}</div>`).join('') : '<div style="font-size: 13px; font-weight: 500; color: #94a3b8;">N/A</div>');
+      ? worshipBackups.map(n => `<div style="font-size: 13.5px; font-weight: 600; color: #0f172a; line-height: 1.45; word-break: break-word; overflow-wrap: anywhere;">${escapeHtml(n)}</div>`).join('')
+      : (genericBackups.length > 0 ? genericBackups.map(n => `<div style="font-size: 13.5px; font-weight: 600; color: #0f172a; line-height: 1.45; word-break: break-word; overflow-wrap: anywhere;">${escapeHtml(n)}</div>`).join('') : '<div style="font-size: 13px; font-weight: 500; color: #94a3b8;">N/A</div>');
 
     mainBodyHTML = `
-      <div style="display: flex; gap: 16px; margin-bottom: 20px; align-items: stretch; break-inside: avoid; page-break-inside: avoid;">
+      <div style="display: flex; gap: 20px; margin-bottom: 24px; align-items: stretch; break-inside: avoid; page-break-inside: avoid;">
         <!-- Left Column: Praise -->
-        <div style="flex: 1; display: flex; flex-direction: column; justify-content: space-between; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px 16px; box-sizing: border-box;">
+        <div style="flex: 1; display: flex; flex-direction: column; justify-content: space-between; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px 18px; box-sizing: border-box;">
           <div>
-            <h2 style="font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em; color: #1b75bc; margin: 0 0 10px 0; padding-bottom: 5px; border-bottom: 1.5px solid #cbd5e1; text-align: left;">
+            <h2 style="font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em; color: #1b75bc; margin: 0 0 12px 0; padding-bottom: 6px; border-bottom: 1.5px solid #cbd5e1; text-align: left;">
               Praise
             </h2>
-            <ol style="list-style: none; padding: 0; margin: 0; text-align: left; display: flex; flex-direction: column; gap: 5px;">
+            <ol style="list-style: none; padding: 0; margin: 0; text-align: left; display: flex; flex-direction: column; gap: 6px;">
               ${praiseItems}
             </ol>
           </div>
-          <div style="margin-top: 16px; padding-top: 12px; border-top: 1px solid #e2e8f0; text-align: left; display: flex; flex-direction: column; gap: 12px;">
+          <div style="margin-top: 18px; padding-top: 14px; border-top: 1px solid #e2e8f0; text-align: left; display: flex; flex-direction: column; gap: 14px;">
             <div>
-              <div style="font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #1b75bc; margin-bottom: 3px;">
+              <div style="font-size: 10.5px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.06em; color: #1b75bc; margin-bottom: 4px;">
                 Song Leader (Praise)
               </div>
-              ${praiseLeaderLines}
+              <div style="display: flex; flex-direction: column; gap: 3px;">
+                ${praiseLeaderLines}
+              </div>
             </div>
             <div>
-              <div style="font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #1b75bc; margin-bottom: 3px;">
+              <div style="font-size: 10.5px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.06em; color: #1b75bc; margin-bottom: 4px;">
                 Backup Singer/s (Praise)
               </div>
-              ${praiseBackupLines}
+              <div style="display: flex; flex-direction: column; gap: 3px;">
+                ${praiseBackupLines}
+              </div>
             </div>
           </div>
         </div>
 
         <!-- Right Column: Worship -->
-        <div style="flex: 1; display: flex; flex-direction: column; justify-content: space-between; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px 16px; box-sizing: border-box;">
+        <div style="flex: 1; display: flex; flex-direction: column; justify-content: space-between; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px 18px; box-sizing: border-box;">
           <div>
-            <h2 style="font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em; color: #1b75bc; margin: 0 0 10px 0; padding-bottom: 5px; border-bottom: 1.5px solid #cbd5e1; text-align: left;">
+            <h2 style="font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em; color: #1b75bc; margin: 0 0 12px 0; padding-bottom: 6px; border-bottom: 1.5px solid #cbd5e1; text-align: left;">
               Worship
             </h2>
-            <ol style="list-style: none; padding: 0; margin: 0; text-align: left; display: flex; flex-direction: column; gap: 5px;">
+            <ol style="list-style: none; padding: 0; margin: 0; text-align: left; display: flex; flex-direction: column; gap: 6px;">
               ${worshipItems}
             </ol>
           </div>
-          <div style="margin-top: 16px; padding-top: 12px; border-top: 1px solid #e2e8f0; text-align: left; display: flex; flex-direction: column; gap: 12px;">
+          <div style="margin-top: 18px; padding-top: 14px; border-top: 1px solid #e2e8f0; text-align: left; display: flex; flex-direction: column; gap: 14px;">
             <div>
-              <div style="font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #1b75bc; margin-bottom: 3px;">
+              <div style="font-size: 10.5px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.06em; color: #1b75bc; margin-bottom: 4px;">
                 Song Leader (Worship)
               </div>
-              ${worshipLeaderLines}
+              <div style="display: flex; flex-direction: column; gap: 3px;">
+                ${worshipLeaderLines}
+              </div>
             </div>
             <div>
-              <div style="font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #1b75bc; margin-bottom: 3px;">
+              <div style="font-size: 10.5px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.06em; color: #1b75bc; margin-bottom: 4px;">
                 Backup Singer/s (Worship)
               </div>
-              ${worshipBackupLines}
+              <div style="display: flex; flex-direction: column; gap: 3px;">
+                ${worshipBackupLines}
+              </div>
             </div>
           </div>
         </div>
@@ -185,48 +207,54 @@ function createExportElement(schedule: Schedule): HTMLElement {
     // ONE SONG LEADER: Praise & Worship songs side by side, with shared Vocalists section below
     const singleLeaderNames = allLeaderNames.length > 0 ? allLeaderNames : [];
     const leaderLines = singleLeaderNames.length > 0
-      ? singleLeaderNames.map(n => `<div style="font-size: 14px; font-weight: 700; color: #0f172a; line-height: 1.4; word-break: break-word; overflow-wrap: anywhere;">${escapeHtml(n)}</div>`).join('')
+      ? singleLeaderNames.map(n => `<div style="font-size: 14px; font-weight: 700; color: #0f172a; line-height: 1.45; word-break: break-word; overflow-wrap: anywhere;">${escapeHtml(n)}</div>`).join('')
       : '<div style="font-size: 13px; font-weight: 500; color: #94a3b8;">N/A</div>';
 
     const allBackupNames = [...genericBackups, ...praiseBackups, ...worshipBackups].filter((v, i, a) => a.indexOf(v) === i);
     const backupLines = allBackupNames.length > 0
-      ? allBackupNames.map(n => `<div style="font-size: 13.5px; font-weight: 600; color: #0f172a; line-height: 1.45; margin-bottom: 3px; word-break: break-word; overflow-wrap: anywhere;">${escapeHtml(n)}</div>`).join('')
+      ? allBackupNames.map(n => `<div style="font-size: 13.5px; font-weight: 600; color: #0f172a; line-height: 1.45; word-break: break-word; overflow-wrap: anywhere;">${escapeHtml(n)}</div>`).join('')
       : '<div style="font-size: 13px; font-weight: 500; color: #94a3b8;">N/A</div>';
 
     mainBodyHTML = `
-      <div style="display: flex; gap: 16px; margin-bottom: 16px; align-items: stretch; break-inside: avoid; page-break-inside: avoid;">
+      <div style="display: flex; gap: 20px; margin-bottom: 20px; align-items: stretch; break-inside: avoid; page-break-inside: avoid;">
         <!-- Left Column: Praise Songs -->
-        <div style="flex: 1; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px 16px; box-sizing: border-box;">
-          <h2 style="font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em; color: #1b75bc; margin: 0 0 10px 0; padding-bottom: 5px; border-bottom: 1.5px solid #cbd5e1; text-align: left;">
+        <div style="flex: 1; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px 18px; box-sizing: border-box;">
+          <h2 style="font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em; color: #1b75bc; margin: 0 0 12px 0; padding-bottom: 6px; border-bottom: 1.5px solid #cbd5e1; text-align: left;">
             Praise
           </h2>
-          <ol style="list-style: none; padding: 0; margin: 0; text-align: left; display: flex; flex-direction: column; gap: 5px;">
+          <ol style="list-style: none; padding: 0; margin: 0; text-align: left; display: flex; flex-direction: column; gap: 6px;">
             ${praiseItems}
           </ol>
         </div>
 
         <!-- Right Column: Worship Songs -->
-        <div style="flex: 1; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px 16px; box-sizing: border-box;">
-          <h2 style="font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em; color: #1b75bc; margin: 0 0 10px 0; padding-bottom: 5px; border-bottom: 1.5px solid #cbd5e1; text-align: left;">
+        <div style="flex: 1; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px 18px; box-sizing: border-box;">
+          <h2 style="font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em; color: #1b75bc; margin: 0 0 12px 0; padding-bottom: 6px; border-bottom: 1.5px solid #cbd5e1; text-align: left;">
             Worship
           </h2>
-          <ol style="list-style: none; padding: 0; margin: 0; text-align: left; display: flex; flex-direction: column; gap: 5px;">
+          <ol style="list-style: none; padding: 0; margin: 0; text-align: left; display: flex; flex-direction: column; gap: 6px;">
             ${worshipItems}
           </ol>
         </div>
       </div>
 
       <!-- Single Vocalists Box -->
-      <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px 16px; margin-bottom: 20px; box-sizing: border-box; text-align: left; break-inside: avoid; page-break-inside: avoid;">
-        <div style="font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #1b75bc; margin-bottom: 3px;">
-          Song Leader (Praise/Worship)
+      <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px 18px; margin-bottom: 24px; box-sizing: border-box; text-align: left; break-inside: avoid; page-break-inside: avoid;">
+        <div>
+          <div style="font-size: 10.5px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.06em; color: #1b75bc; margin-bottom: 4px;">
+            Song Leader (Praise/Worship)
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 3px;">
+            ${leaderLines}
+          </div>
         </div>
-        ${leaderLines}
-        <div style="margin-top: 10px; padding-top: 8px; border-top: 1px solid #e2e8f0;">
-          <div style="font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #1b75bc; margin-bottom: 3px;">
+        <div style="margin-top: 14px; padding-top: 12px; border-top: 1px solid #e2e8f0;">
+          <div style="font-size: 10.5px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.06em; color: #1b75bc; margin-bottom: 4px;">
             Backup Singer/s
           </div>
-          ${backupLines}
+          <div style="display: flex; flex-direction: column; gap: 3px;">
+            ${backupLines}
+          </div>
         </div>
       </div>
     `;
@@ -271,20 +299,20 @@ function createExportElement(schedule: Schedule): HTMLElement {
 
       const membersLines = memberNames.length > 0
         ? memberNames.map((name) => `
-            <div style="font-size: 13.5px; font-weight: 600; color: #0f172a; line-height: 1.4; text-align: left; word-break: break-word; overflow-wrap: anywhere;">
+            <div style="font-size: 13.5px; font-weight: 600; color: #0f172a; line-height: 1.45; text-align: left; word-break: break-word; overflow-wrap: anywhere;">
               ${escapeHtml(name)}
             </div>
           `).join('')
         : `<div style="font-size: 13px; font-weight: 500; color: #94a3b8; line-height: 1.4; text-align: left;">N/A</div>`;
 
-      const notesHTML = assignment.notes ? `<div style="font-size: 11px; color: #64748b; font-style: italic; margin-top: 3px; text-align: left;">Note: ${escapeHtml(assignment.notes)}</div>` : '';
+      const notesHTML = assignment.notes ? `<div style="font-size: 11px; color: #64748b; font-style: italic; margin-top: 4px; text-align: left;">Note: ${escapeHtml(assignment.notes)}</div>` : '';
 
       return `
-        <div style="text-align: left; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px 12px; box-sizing: border-box; break-inside: avoid; page-break-inside: avoid;">
-          <div style="font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #1b75bc; margin-bottom: 3px; text-align: left;">
+        <div style="text-align: left; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 12px 14px; box-sizing: border-box; break-inside: avoid; page-break-inside: avoid;">
+          <div style="font-size: 10.5px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.06em; color: #1b75bc; margin-bottom: 4px; text-align: left;">
             ${escapeHtml(assignment.role)}
           </div>
-          <div style="display: flex; flex-direction: column; gap: 2px; text-align: left;">
+          <div style="display: flex; flex-direction: column; gap: 3px; text-align: left;">
             ${membersLines}
           </div>
           ${notesHTML}
@@ -294,10 +322,10 @@ function createExportElement(schedule: Schedule): HTMLElement {
 
     teamHTML = `
       <div style="break-inside: avoid; page-break-inside: avoid;">
-        <h2 style="font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em; color: #1b75bc; margin: 0 0 10px 0; padding-bottom: 5px; border-bottom: 1.5px solid #cbd5e1; text-align: left;">
+        <h2 style="font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em; color: #1b75bc; margin: 0 0 12px 0; padding-bottom: 6px; border-bottom: 1.5px solid #cbd5e1; text-align: left;">
           Worship Team
         </h2>
-        <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; text-align: left;">
+        <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; text-align: left;">
           ${items}
         </div>
       </div>
@@ -309,19 +337,18 @@ function createExportElement(schedule: Schedule): HTMLElement {
     : 'N/A';
 
   container.innerHTML = `
-    <div style="border: 1px solid #cbd5e1; border-radius: 8px; padding: 28px 32px; background: #ffffff;">
+    <div style="border: 1px solid #cbd5e1; border-radius: 8px; padding: 32px 36px; background: #ffffff;">
       <!-- Header -->
-      <div style="text-align: center; margin-bottom: 18px;">
-        <div style="font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: #475569; margin-bottom: 4px;">
+      <div style="text-align: center; margin-bottom: 22px; padding-bottom: 16px; border-bottom: 1px solid #e2e8f0;">
+        <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: #64748b; margin-bottom: 4px;">
           Word for the World Christian Fellowship &ndash; Santa Cruz
         </div>
-        <h1 style="font-size: 22px; font-weight: 800; color: #0f172a; margin: 0 0 4px 0; letter-spacing: -0.01em;">
-          Worship Team Line-up
+        <h1 style="font-size: 22px; font-weight: 800; color: #0f172a; margin: 0 0 6px 0; letter-spacing: -0.01em; text-transform: uppercase;">
+          Worship Team Line-Up
         </h1>
-        <div style="font-size: 12.5px; font-weight: 500; color: #475569;">
-          ${escapeHtml(formattedDate)} &nbsp;&bull;&nbsp; ${escapeHtml(schedule.serviceType || 'Sunday Service')}
+        <div style="font-size: 13.5px; font-weight: 600; color: #334155;">
+          ${escapeHtml((schedule.serviceType || 'Sunday Service').toUpperCase())} &nbsp;&bull;&nbsp; ${escapeHtml(formattedDate.toUpperCase())}
         </div>
-        <div style="height: 1px; background-color: #e2e8f0; margin-top: 14px;"></div>
       </div>
 
       <!-- Content -->
@@ -346,8 +373,10 @@ async function renderCanvas(schedule: Schedule): Promise<HTMLCanvasElement> {
   const element = createExportElement(schedule);
   document.body.appendChild(element);
 
-  // Wait for DOM layout
-  await new Promise((resolve) => setTimeout(resolve, 50));
+  if (document.fonts && document.fonts.ready) {
+    await document.fonts.ready;
+  }
+  await new Promise((resolve) => setTimeout(resolve, 100));
 
   const canvas = await html2canvas(element, {
     scale: 3, // High resolution for mobile sharing & printing
@@ -409,12 +438,11 @@ export async function exportLineupAsPNG(schedule: Schedule): Promise<void> {
 
 /**
  * Export lineup as PDF document formatted for standard A4 printable layout.
+ * Uses smart whitespace canvas slicing to prevent text line splitting across pages.
  */
 export async function exportLineupAsPDF(schedule: Schedule): Promise<void> {
   const canvas = await renderCanvas(schedule);
-  const imgData = canvas.toDataURL('image/png');
 
-  // Standard A4 orientation
   const pdf = new jsPDF('p', 'mm', 'a4');
   const pdfWidth = pdf.internal.pageSize.getWidth(); // 210mm
   const pdfHeight = pdf.internal.pageSize.getHeight(); // 297mm
@@ -423,23 +451,84 @@ export async function exportLineupAsPDF(schedule: Schedule): Promise<void> {
   const printableWidth = pdfWidth - margin * 2; // 190mm
   const printableHeight = pdfHeight - margin * 2; // 277mm
 
-  const imgWidth = printableWidth;
-  const imgHeight = (canvas.height * printableWidth) / canvas.width;
+  // Convert printable width to canvas pixels scale factor
+  const scale = printableWidth / canvas.width; // mm per canvas pixel
+  const maxPageCanvasHeight = Math.floor(printableHeight / scale);
 
-  if (imgHeight <= printableHeight) {
-    pdf.addImage(imgData, 'PNG', margin, margin, imgWidth, imgHeight);
+  const canvasWidth = canvas.width;
+  const totalCanvasHeight = canvas.height;
+
+  if (totalCanvasHeight <= maxPageCanvasHeight) {
+    // Fits on a single A4 page
+    const imgData = canvas.toDataURL('image/png');
+    const imgHeight = totalCanvasHeight * scale;
+    pdf.addImage(imgData, 'PNG', margin, margin, printableWidth, imgHeight);
   } else {
-    let heightRemaining = imgHeight;
-    let position = margin;
+    // Multi-page PDF: slice canvas cleanly at white space boundaries
+    const ctx = canvas.getContext('2d');
+    let currentY = 0;
+    let pageIndex = 0;
 
-    pdf.addImage(imgData, 'PNG', margin, position, imgWidth, imgHeight);
-    heightRemaining -= printableHeight;
+    while (currentY < totalCanvasHeight) {
+      const remainingHeight = totalCanvasHeight - currentY;
+      let sliceHeight = Math.min(maxPageCanvasHeight, remainingHeight);
 
-    while (heightRemaining > 0) {
-      position -= 297; // Shift offset by full A4 page height
-      pdf.addPage('a4', 'portrait');
-      pdf.addImage(imgData, 'PNG', margin, position, imgWidth, imgHeight);
-      heightRemaining -= printableHeight;
+      if (remainingHeight > maxPageCanvasHeight) {
+        // Find a safe cut point by searching upward for a white pixel row
+        let bestCutY = currentY + sliceHeight;
+        if (ctx) {
+          const searchStart = currentY + sliceHeight;
+          const searchEnd = Math.max(currentY + Math.floor(maxPageCanvasHeight * 0.6), currentY + sliceHeight - 150);
+
+          for (let y = searchStart; y >= searchEnd; y--) {
+            const rowData = ctx.getImageData(0, y, canvasWidth, 1).data;
+            let isWhiteRow = true;
+            for (let x = 0; x < rowData.length; x += 16) {
+              const r = rowData[x];
+              const g = rowData[x + 1];
+              const b = rowData[x + 2];
+              const a = rowData[x + 3];
+              if (a > 10 && (r < 245 || g < 245 || b < 245)) {
+                isWhiteRow = false;
+                break;
+              }
+            }
+            if (isWhiteRow) {
+              bestCutY = y;
+              break;
+            }
+          }
+        }
+        sliceHeight = bestCutY - currentY;
+      }
+
+      // Render page slice onto temporary canvas
+      const tempCanvas = document.createElement('canvas');
+      tempCanvas.width = canvasWidth;
+      tempCanvas.height = sliceHeight;
+      const tempCtx = tempCanvas.getContext('2d');
+
+      if (tempCtx) {
+        tempCtx.fillStyle = '#ffffff';
+        tempCtx.fillRect(0, 0, canvasWidth, sliceHeight);
+        tempCtx.drawImage(
+          canvas,
+          0, currentY, canvasWidth, sliceHeight,
+          0, 0, canvasWidth, sliceHeight
+        );
+      }
+
+      const sliceDataUrl = tempCanvas.toDataURL('image/png');
+      const sliceImgHeight = sliceHeight * scale;
+
+      if (pageIndex > 0) {
+        pdf.addPage('a4', 'portrait');
+      }
+
+      pdf.addImage(sliceDataUrl, 'PNG', margin, margin, printableWidth, sliceImgHeight);
+
+      currentY += sliceHeight;
+      pageIndex++;
     }
   }
 

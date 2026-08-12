@@ -154,6 +154,26 @@ interface SchedulerViewProps {
   onViewSchedules?: () => void;
 }
 
+export const isBackupRole = (rName: string): boolean => {
+  const lower = (rName || '').toLowerCase().trim();
+  return (
+    (lower.includes('backup') || lower.includes('vocal') || lower.includes('singer')) &&
+    !lower.includes('song leader') &&
+    !lower.includes('worship leader') &&
+    !lower.includes('song lead')
+  );
+};
+
+export const isMusicianRole = (rName: string): boolean => {
+  const r = (rName || '').toLowerCase().trim();
+  return (
+    r.includes('guitar') ||
+    r.includes('keyboard') ||
+    (r.includes('bass') && !r.includes('brass')) ||
+    r.includes('drum')
+  );
+};
+
 const DEFAULT_ROLES: { role: string; targetLabel: string }[] = [
   { role: 'Song Leader (Praise/Worship)', targetLabel: 'Song Leader, Worship Leader' },
   { role: 'Backup Singer/s', targetLabel: 'Vocalist' },
@@ -1273,14 +1293,20 @@ export const SchedulerView: React.FC<SchedulerViewProps> = ({
     // A member is unavailable for new selection ONLY if isMemberUnderDisciplinary(m, serviceDate) === true.
     const eligibleMembers = members.filter((m) => !isMemberUnderDisciplinary(m, serviceDate));
 
+    // NEW RULE 1: HARD ELIGIBILITY RULE FOR BACKUP SINGER
+    // Only members with the "Vocalist" tag may appear in any Backup Singer selection.
+    if (isBackupRole(roleName)) {
+      return eligibleMembers.filter((m) =>
+        m.labels && m.labels.some((lbl) => lbl.trim().toLowerCase() === 'vocalist')
+      );
+    }
+
     if (!isSmartFilter || !roleName) return eligibleMembers;
 
     const lowerRole = roleName.toLowerCase();
     let targetKeywords: string[] = [];
 
-    if (lowerRole.includes('backup') || lowerRole.includes('vocal') || lowerRole.includes('singer')) {
-      targetKeywords = ['vocalist', 'backup', 'singer', 'song leader', 'worship leader'];
-    } else if (lowerRole.includes('song') || lowerRole.includes('lead') || lowerRole.includes('worship')) {
+    if (lowerRole.includes('song') || lowerRole.includes('lead') || lowerRole.includes('worship')) {
       targetKeywords = ['song leader', 'worship leader', 'song lead'];
     } else if (lowerRole.includes('guitar')) {
       targetKeywords = ['guitarist'];
@@ -1959,10 +1985,12 @@ export const SchedulerView: React.FC<SchedulerViewProps> = ({
                         const isTargetWorshipLeader = targetRoleLower.includes('leader') && targetRoleLower.includes('worship') && !targetRoleLower.includes('praise');
                         const isTargetGenericLeader = targetRoleLower.includes('leader') && !isTargetPraiseLeader && !isTargetWorshipLeader;
 
-                        const isTargetBackup = targetRoleLower.includes('backup') || targetRoleLower.includes('vocalist');
+                        const isTargetBackup = isBackupRole(row.role);
                         const isTargetPraiseBackup = isTargetBackup && targetRoleLower.includes('praise') && !targetRoleLower.includes('worship');
                         const isTargetWorshipBackup = isTargetBackup && targetRoleLower.includes('worship') && !targetRoleLower.includes('praise');
                         const isTargetGenericBackup = isTargetBackup && !isTargetPraiseBackup && !isTargetWorshipBackup;
+
+                        const isTargetMusician = isMusicianRole(row.role);
 
                         let praiseLeaderId = '';
                         let worshipLeaderId = '';
@@ -1984,14 +2012,17 @@ export const SchedulerView: React.FC<SchedulerViewProps> = ({
                         });
 
                         const assignedElsewhereIds = new Set<string>();
+                        const allAssignedElsewhereIds = new Set<string>();
 
                         ministryRows.forEach((r) => {
                           const rLower = (r.role || '').toLowerCase();
+                          const rIsMusician = isMusicianRole(r.role);
+
                           const isRPraiseLeader = rLower.includes('leader') && rLower.includes('praise') && !rLower.includes('worship');
                           const isRWorshipLeader = rLower.includes('leader') && rLower.includes('worship') && !rLower.includes('praise');
                           const isRGenericLeader = rLower.includes('leader') && !isRPraiseLeader && !isRWorshipLeader;
 
-                          const isRBackup = rLower.includes('backup') || rLower.includes('vocalist');
+                          const isRBackup = isBackupRole(r.role);
                           const isRPraiseBackup = isRBackup && rLower.includes('praise') && !rLower.includes('worship');
                           const isRWorshipBackup = isRBackup && rLower.includes('worship') && !rLower.includes('praise');
                           const isRGenericBackup = isRBackup && !isRPraiseBackup && !isRWorshipBackup;
@@ -1999,12 +2030,27 @@ export const SchedulerView: React.FC<SchedulerViewProps> = ({
                           const rMembers = getAssignmentMembers(r);
                           rMembers.forEach((m, idx) => {
                             if (!m.memberId) return;
+
+                            // Skip exact same slot currently being edited
                             if (r.id === row.id && idx === mIdx) return;
+
+                            // Same row, different slot -> cannot assign same member twice in same row
                             if (r.id === row.id && idx !== mIdx) {
                               assignedElsewhereIds.add(m.memberId);
                               return;
                             }
 
+                            // Track members assigned in other rows
+                            allAssignedElsewhereIds.add(m.memberId);
+
+                            // 1. MUSICIAN ASSIGNMENT EXCLUSIVITY (NEW RULE 2):
+                            // Member assigned to a musician role CANNOT be assigned to any other ministry.
+                            if (rIsMusician) {
+                              assignedElsewhereIds.add(m.memberId);
+                              return;
+                            }
+
+                            // 2. SONG LEADER / BACKUP RESTRICTIONS:
                             if (isTargetPraiseLeader) {
                               if (m.memberId === worshipLeaderId || isRWorshipLeader || isRPraiseBackup) {
                                 assignedElsewhereIds.add(m.memberId);
@@ -2046,11 +2092,14 @@ export const SchedulerView: React.FC<SchedulerViewProps> = ({
                               }
                               return;
                             }
-
-                            // For normal tag-based roles (Guitarist, Keyboardist, Bassist, Drummer, Audio/Live Technician, Lyricist, etc.):
-                            // Members assigned in other ministry rows (r.id !== row.id) are NOT excluded.
                           });
                         });
+
+                        // 3. TARGET IS MUSICIAN ROLE:
+                        // If target row is a musician role, ANY member assigned anywhere else in the lineup cannot be assigned to this musician role.
+                        if (isTargetMusician) {
+                          allAssignedElsewhereIds.forEach((id) => assignedElsewhereIds.add(id));
+                        }
 
                         let selectableMembers = availableMembersForRole.filter(
                           (m) => !assignedElsewhereIds.has(m.id)
