@@ -1009,43 +1009,60 @@ export const InteractiveTourOverlay: React.FC<InteractiveTourOverlayProps> = ({
   return (
     <div className="fixed inset-0 z-[9990] overflow-hidden pointer-events-none select-none animate-in fade-in duration-200">
       
-      {/* Non-blocking SVG Dimmed Background with Cutout Mask around target element */}
-      {targetRect ? (
-        <svg className="absolute inset-0 w-full h-full pointer-events-none z-[9991]">
-          <defs>
-            <mask id="tour-spotlight-mask">
-              <rect width="100%" height="100%" fill="white" />
-              <rect
-                x={targetRect.left - 6}
-                y={targetRect.top - 6}
-                width={targetRect.width + 12}
-                height={targetRect.height + 12}
-                rx="12"
-                fill="black"
-              />
-            </mask>
-          </defs>
-          <rect
-            width="100%"
-            height="100%"
-            fill="rgba(15, 23, 42, 0.20)"
-            mask="url(#tour-spotlight-mask)"
-          />
-          {/* Animated Ring around highlighted target */}
-          <rect
-            x={targetRect.left - 6}
-            y={targetRect.top - 6}
-            width={targetRect.width + 12}
-            height={targetRect.height + 12}
-            rx="12"
-            fill="none"
-            stroke="#6366f1"
-            strokeWidth="3"
-            className="animate-pulse"
-          />
-        </svg>
-      ) : (
-        <div className="absolute inset-0 bg-slate-950/15 pointer-events-none z-[9991]" />
+      {/* Focus Mode Overlay: Background Blur & Semi-Transparent Dark Overlay around target */}
+      {targetRect ? (() => {
+        const pad = 6;
+        const tTop = Math.max(0, targetRect.top - pad);
+        const tLeft = Math.max(0, targetRect.left - pad);
+        const tRight = Math.min(window.innerWidth, targetRect.left + targetRect.width + pad);
+        const tBottom = Math.min(window.innerHeight, targetRect.top + targetRect.height + pad);
+
+        return (
+          <>
+            {/* Top Backdrop Blur Region */}
+            <div
+              className="fixed pointer-events-none backdrop-blur-md bg-slate-950/45 dark:bg-slate-950/65 z-[9991] transition-all duration-150"
+              style={{ top: 0, left: 0, right: 0, height: `${tTop}px` }}
+            />
+            {/* Bottom Backdrop Blur Region */}
+            <div
+              className="fixed pointer-events-none backdrop-blur-md bg-slate-950/45 dark:bg-slate-950/65 z-[9991] transition-all duration-150"
+              style={{ top: `${tBottom}px`, left: 0, right: 0, bottom: 0 }}
+            />
+            {/* Left Backdrop Blur Region */}
+            <div
+              className="fixed pointer-events-none backdrop-blur-md bg-slate-950/45 dark:bg-slate-950/65 z-[9991] transition-all duration-150"
+              style={{
+                top: `${tTop}px`,
+                left: 0,
+                width: `${tLeft}px`,
+                height: `${Math.max(0, tBottom - tTop)}px`
+              }}
+            />
+            {/* Right Backdrop Blur Region */}
+            <div
+              className="fixed pointer-events-none backdrop-blur-md bg-slate-950/45 dark:bg-slate-950/65 z-[9991] transition-all duration-150"
+              style={{
+                top: `${tTop}px`,
+                left: `${tRight}px`,
+                right: 0,
+                height: `${Math.max(0, tBottom - tTop)}px`
+              }}
+            />
+            {/* Sharp Accent Highlight Ring around cutout target */}
+            <div
+              className="fixed pointer-events-none z-[9992] rounded-xl border-2 border-indigo-500/90 dark:border-indigo-400/90 shadow-[0_0_20px_rgba(99,102,241,0.5)] animate-pulse transition-all duration-150"
+              style={{
+                top: `${tTop}px`,
+                left: `${tLeft}px`,
+                width: `${Math.max(0, tRight - tLeft)}px`,
+                height: `${Math.max(0, tBottom - tTop)}px`
+              }}
+            />
+          </>
+        );
+      })() : (
+        <div className="fixed inset-0 pointer-events-none backdrop-blur-md bg-slate-950/45 dark:bg-slate-950/65 z-[9991] transition-all duration-150" />
       )}
 
       {/* Popover Guide Tooltip Card */}
