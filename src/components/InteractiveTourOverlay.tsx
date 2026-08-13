@@ -37,8 +37,10 @@ export const InteractiveTourOverlay: React.FC<InteractiveTourOverlayProps> = ({
   const [targetRect, setTargetRect] = useState<DOMRect | null>(null);
   const [isTopicMenuOpen, setIsTopicMenuOpen] = useState(false);
   const [isSaveCompletedState, setIsSaveCompletedState] = useState(false);
+  const [isTransitioning, setIsTransitioning] = useState(false);
   const currentStepIndexRef = useRef(0);
   const isAdvancingRef = useRef(false);
+  const popoverRef = useRef<HTMLDivElement>(null);
 
   // Sync initialStep when changed externally
   useEffect(() => {
@@ -57,12 +59,62 @@ export const InteractiveTourOverlay: React.FC<InteractiveTourOverlayProps> = ({
 
   const step = INTERACTIVE_GUIDE_STEPS[currentStepIndex] || INTERACTIVE_GUIDE_STEPS[0];
 
-  // Auto-switch tabs when step changes
-  useEffect(() => {
-    if (isOpen && step && activeTab !== step.targetTab) {
-      setActiveTab(step.targetTab);
-    }
-  }, [isOpen, currentStepIndex, step, activeTab, setActiveTab]);
+  // Helper function to scroll target element into safe visible area FIRST
+  const scrollToTargetElement = (targetSelector: string): Promise<boolean> => {
+    return new Promise((resolve) => {
+      if (typeof document === 'undefined') {
+        resolve(false);
+        return;
+      }
+
+      const el = document.querySelector(targetSelector) as HTMLElement | null;
+      if (!el) {
+        resolve(false);
+        return;
+      }
+
+      const rect = el.getBoundingClientRect();
+      const headerHeight = 70;
+      const vh = window.innerHeight;
+
+      // Check if element top and bottom are already comfortably in view
+      const isInView = rect.top >= headerHeight + 10 && rect.bottom <= vh - 20;
+
+      if (isInView) {
+        resolve(true);
+        return;
+      }
+
+      // Find appropriate scroll container (window or parent scroll container)
+      let scrollContainer: Element | Window = window;
+      let curr: Element | null = el.parentElement;
+      while (curr && curr !== document.body && curr !== document.documentElement) {
+        const style = window.getComputedStyle(curr);
+        if (style.overflowY === 'auto' || style.overflowY === 'scroll') {
+          scrollContainer = curr;
+          break;
+        }
+        curr = curr.parentElement;
+      }
+
+      if (scrollContainer === window) {
+        const elementAbsoluteTop = rect.top + window.scrollY;
+        const targetScrollY = Math.max(0, elementAbsoluteTop - headerHeight - 20);
+        window.scrollTo({ top: targetScrollY, behavior: 'smooth' });
+      } else {
+        const containerRect = (scrollContainer as Element).getBoundingClientRect();
+        const relativeTop = rect.top - containerRect.top;
+        (scrollContainer as Element).scrollBy({
+          top: relativeTop - headerHeight - 20,
+          behavior: 'smooth'
+        });
+      }
+
+      setTimeout(() => {
+        resolve(true);
+      }, 250);
+    });
+  };
 
   // Recalculate spotlight target rect
   const updateTargetRect = () => {
@@ -97,18 +149,58 @@ export const InteractiveTourOverlay: React.FC<InteractiveTourOverlayProps> = ({
       const rect = el.getBoundingClientRect();
       if (rect.width > 0 && rect.height > 0) {
         setTargetRect(rect);
-        // Smooth scroll element into view if offscreen
-        if (rect.top < 0 || rect.bottom > window.innerHeight) {
-          el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        }
       } else {
         setTargetRect(null);
       }
     } else {
-      // Fallback if target element not found in DOM
       setTargetRect(null);
     }
   };
+
+  // Step transition effect: Switch tab & scroll target into view FIRST before revealing step
+  useEffect(() => {
+    if (!isOpen || !step) return;
+
+    let isMounted = true;
+    setIsTransitioning(true);
+
+    const performStepNavigation = async () => {
+      // 1. Ensure target tab is active
+      if (activeTab !== step.targetTab) {
+        setActiveTab(step.targetTab);
+        await new Promise((resolve) => setTimeout(resolve, 80));
+      }
+
+      let selector = step.targetSelector;
+      if (step.id === 42) {
+        const doneBtn = document.querySelector('[data-tour="import-done-btn"]');
+        const submitBtn = document.querySelector('[data-tour="import-submit-btn"]');
+        const urlInput = document.querySelector('[data-tour="playlist-url-input"]');
+        const modalContainer = document.querySelector('[data-tour="import-modal-container"]');
+        const importPlaylistBtn = document.querySelector('[data-tour="import-playlist-btn"]');
+
+        if (doneBtn) selector = '[data-tour="import-done-btn"]';
+        else if (submitBtn) selector = '[data-tour="import-submit-btn"]';
+        else if (urlInput) selector = '[data-tour="playlist-url-input"]';
+        else if (modalContainer) selector = '[data-tour="import-modal-container"]';
+        else if (importPlaylistBtn) selector = '[data-tour="import-playlist-btn"]';
+      }
+
+      // 2. Scroll to target element FIRST
+      await scrollToTargetElement(selector);
+
+      if (isMounted) {
+        updateTargetRect();
+        setIsTransitioning(false);
+      }
+    };
+
+    performStepNavigation();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [isOpen, currentStepIndex, step?.id]);
 
   useLayoutEffect(() => {
     updateTargetRect();
@@ -557,72 +649,163 @@ export const InteractiveTourOverlay: React.FC<InteractiveTourOverlayProps> = ({
     }
   }
 
-  // Compute Popover Position to avoid clipping and overlapping target/modal
-  let popoverStyle: React.CSSProperties = {
-    position: 'fixed',
-    zIndex: 9995
-  };
+  // Calculate Popover Position to dynamically prevent clipping and overlapping target/modal
+  const getPopoverStyle = (): React.CSSProperties => {
+    const isMobile = typeof window !== 'undefined' && window.innerWidth < 640;
+    const popoverWidth = popoverRef.current?.offsetWidth || 380;
+    const popoverHeight = popoverRef.current?.offsetHeight || 280;
 
-  const isMobile = typeof window !== 'undefined' && window.innerWidth < 640;
+    const vw = typeof window !== 'undefined' ? window.innerWidth : 1200;
+    const vh = typeof window !== 'undefined' ? window.innerHeight : 800;
+    const headerHeight = 70;
+    const sidebarWidth = vw >= 1024 ? 256 : 0;
 
-  if (isMobile) {
-    popoverStyle = {
+    const baseStyle: React.CSSProperties = {
       position: 'fixed',
-      bottom: '16px',
-      left: '16px',
-      right: '16px',
-      maxHeight: '50vh',
-      zIndex: 9995
+      zIndex: 9995,
+      transition: 'top 0.2s ease-out, left 0.2s ease-out, bottom 0.2s ease-out, right 0.2s ease-out, opacity 0.2s ease-out',
+      opacity: isTransitioning ? 0 : 1
     };
-  } else if (isImportModalOpen || modalEl) {
-    // When any modal is open, place the guide card in the bottom-right corner outside the centered modal
-    popoverStyle = {
-      position: 'fixed',
-      bottom: '24px',
-      right: '24px',
-      width: '380px',
-      zIndex: 9995
-    };
-  } else if (targetRect) {
-    const spaceBelow = window.innerHeight - targetRect.bottom;
-    const spaceAbove = targetRect.top;
-    const spaceRight = window.innerWidth - targetRect.right;
-    const spaceLeft = targetRect.left;
 
-    if (spaceBelow > 220) {
-      popoverStyle.top = `${targetRect.bottom + 12}px`;
-      popoverStyle.left = `${Math.max(16, Math.min(targetRect.left, window.innerWidth - 420))}px`;
-      popoverStyle.width = '380px';
-    } else if (spaceAbove > 220) {
-      popoverStyle.bottom = `${window.innerHeight - targetRect.top + 12}px`;
-      popoverStyle.left = `${Math.max(16, Math.min(targetRect.left, window.innerWidth - 420))}px`;
-      popoverStyle.width = '380px';
-    } else if (spaceRight > 400) {
-      popoverStyle.top = `${Math.max(16, Math.min(targetRect.top, window.innerHeight - 300))}px`;
-      popoverStyle.left = `${targetRect.right + 12}px`;
-      popoverStyle.width = '380px';
-    } else if (spaceLeft > 400) {
-      popoverStyle.top = `${Math.max(16, Math.min(targetRect.top, window.innerHeight - 300))}px`;
-      popoverStyle.left = `${targetRect.left - 392}px`;
-      popoverStyle.width = '380px';
-    } else {
-      popoverStyle = {
-        position: 'fixed',
-        bottom: '24px',
-        right: '24px',
-        width: '380px',
-        zIndex: 9995
+    if (isMobile) {
+      if (targetRect) {
+        const targetCenterY = targetRect.top + targetRect.height / 2;
+        if (targetCenterY > vh / 2) {
+          return {
+            ...baseStyle,
+            top: `${headerHeight + 12}px`,
+            left: '12px',
+            right: '12px',
+            maxHeight: `${Math.min(320, vh - headerHeight - 24)}px`
+          };
+        }
+      }
+      return {
+        ...baseStyle,
+        bottom: '12px',
+        left: '12px',
+        right: '12px',
+        maxHeight: `${Math.min(320, vh - 24)}px`
       };
     }
-  } else {
-    popoverStyle = {
-      position: 'fixed',
-      bottom: '24px',
-      right: '24px',
-      width: '380px',
-      zIndex: 9995
+
+    if (isImportModalOpen || modalEl) {
+      return {
+        ...baseStyle,
+        bottom: '24px',
+        right: '24px',
+        width: '380px'
+      };
+    }
+
+    if (!targetRect) {
+      return {
+        ...baseStyle,
+        bottom: '24px',
+        right: '24px',
+        width: '380px'
+      };
+    }
+
+    const T = {
+      left: targetRect.left - 8,
+      top: targetRect.top - 8,
+      right: targetRect.right + 8,
+      bottom: targetRect.bottom + 8,
+      width: targetRect.width + 16,
+      height: targetRect.height + 16
     };
-  }
+
+    const PW = Math.min(popoverWidth, vw - sidebarWidth - 32);
+    const PH = popoverHeight;
+
+    const overlaps = (pLeft: number, pTop: number, pW: number, pH: number) => {
+      const pRight = pLeft + pW;
+      const pBottom = pTop + pH;
+      const margin = 8;
+      return !(
+        pRight + margin <= T.left ||
+        pLeft >= T.right + margin ||
+        pBottom + margin <= T.top ||
+        pTop >= T.bottom + margin
+      );
+    };
+
+    // Candidate 1: Below Target
+    {
+      const pTop = T.bottom + 16;
+      let pLeft = T.left;
+      if (pLeft + PW > vw - 16) pLeft = vw - PW - 16;
+      if (pLeft < sidebarWidth + 16) pLeft = sidebarWidth + 16;
+
+      if (pTop + PH <= vh - 16 && !overlaps(pLeft, pTop, PW, PH)) {
+        return { ...baseStyle, top: `${pTop}px`, left: `${pLeft}px`, width: `${PW}px` };
+      }
+    }
+
+    // Candidate 2: Above Target
+    {
+      const pTop = T.top - PH - 16;
+      let pLeft = T.left;
+      if (pLeft + PW > vw - 16) pLeft = vw - PW - 16;
+      if (pLeft < sidebarWidth + 16) pLeft = sidebarWidth + 16;
+
+      if (pTop >= headerHeight + 16 && !overlaps(pLeft, pTop, PW, PH)) {
+        return { ...baseStyle, top: `${pTop}px`, left: `${pLeft}px`, width: `${PW}px` };
+      }
+    }
+
+    // Candidate 3: Right of Target
+    {
+      const pLeft = T.right + 16;
+      let pTop = T.top;
+      if (pTop + PH > vh - 16) pTop = vh - PH - 16;
+      if (pTop < headerHeight + 16) pTop = headerHeight + 16;
+
+      if (pLeft + PW <= vw - 16 && !overlaps(pLeft, pTop, PW, PH)) {
+        return { ...baseStyle, top: `${pTop}px`, left: `${pLeft}px`, width: `${PW}px` };
+      }
+    }
+
+    // Candidate 4: Left of Target
+    {
+      const pLeft = T.left - PW - 16;
+      let pTop = T.top;
+      if (pTop + PH > vh - 16) pTop = vh - PH - 16;
+      if (pTop < headerHeight + 16) pTop = headerHeight + 16;
+
+      if (pLeft >= sidebarWidth + 16 && !overlaps(pLeft, pTop, PW, PH)) {
+        return { ...baseStyle, top: `${pTop}px`, left: `${pLeft}px`, width: `${PW}px` };
+      }
+    }
+
+    // Candidate 5: Corners
+    const corners = [
+      { pLeft: vw - PW - 16, pTop: vh - PH - 16 },
+      { pLeft: sidebarWidth + 16, pTop: vh - PH - 16 },
+      { pLeft: vw - PW - 16, pTop: headerHeight + 16 },
+      { pLeft: sidebarWidth + 16, pTop: headerHeight + 16 }
+    ];
+
+    for (const corner of corners) {
+      if (!overlaps(corner.pLeft, corner.pTop, PW, PH)) {
+        return { ...baseStyle, top: `${corner.pTop}px`, left: `${corner.pLeft}px`, width: `${PW}px` };
+      }
+    }
+
+    // Fallback: Safe corner positioning
+    const pLeft = Math.max(sidebarWidth + 16, vw - PW - 16);
+    const pTop = Math.max(headerHeight + 16, vh - PH - 16);
+
+    return {
+      ...baseStyle,
+      top: `${pTop}px`,
+      left: `${pLeft}px`,
+      width: `${PW}px`
+    };
+  };
+
+  const popoverStyle = getPopoverStyle();
 
   return (
     <div className="fixed inset-0 z-[9990] overflow-hidden pointer-events-none select-none animate-in fade-in duration-200">
@@ -668,6 +851,7 @@ export const InteractiveTourOverlay: React.FC<InteractiveTourOverlayProps> = ({
 
       {/* Popover Guide Tooltip Card */}
       <div
+        ref={popoverRef}
         style={popoverStyle}
         className="pointer-events-auto z-[9995] w-full max-w-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl overflow-hidden flex flex-col transform transition-all duration-300 animate-in zoom-in-95"
       >

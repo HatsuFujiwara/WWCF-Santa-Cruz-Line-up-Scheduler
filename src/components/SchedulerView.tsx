@@ -1661,7 +1661,7 @@ export const SchedulerView: React.FC<SchedulerViewProps> = ({
                     }`}
                   >
                     {/* Top Row on Mobile: Drag, Index, Autocomplete */}
-                    <div className="flex items-center gap-2 w-full sm:w-auto flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-1 min-w-0">
                       {/* Drag Handle */}
                       <div
                         className="cursor-grab active:cursor-grabbing text-slate-300 dark:text-slate-600 hover:text-slate-500 dark:hover:text-slate-300 p-1 shrink-0"
@@ -1674,7 +1674,7 @@ export const SchedulerView: React.FC<SchedulerViewProps> = ({
                         {String(idx + 1).padStart(2, '0')}
                       </span>
 
-                      <div className="flex-1 min-w-0">
+                      <div className="flex-1 min-w-[180px] sm:min-w-[240px]">
                         <SongAutocomplete
                           value={song}
                           onChange={(val) => handlePraiseChange(idx, val)}
@@ -1787,7 +1787,7 @@ export const SchedulerView: React.FC<SchedulerViewProps> = ({
                     }`}
                   >
                     {/* Top Row on Mobile: Drag, Index, Autocomplete */}
-                    <div className="flex items-center gap-2 w-full sm:w-auto flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-1 min-w-0">
                       {/* Drag Handle */}
                       <div
                         className="cursor-grab active:cursor-grabbing text-slate-300 dark:text-slate-600 hover:text-slate-500 dark:hover:text-slate-300 p-1 shrink-0"
@@ -1800,7 +1800,7 @@ export const SchedulerView: React.FC<SchedulerViewProps> = ({
                         {String(idx + 1).padStart(2, '0')}
                       </span>
 
-                      <div className="flex-1 min-w-0">
+                      <div className="flex-1 min-w-[180px] sm:min-w-[240px]">
                         <SongAutocomplete
                           value={song}
                           onChange={(val) => handleWorshipChange(idx, val)}

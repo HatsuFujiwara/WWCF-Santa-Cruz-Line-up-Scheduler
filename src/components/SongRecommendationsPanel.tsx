@@ -439,7 +439,7 @@ export const SongRecommendationsPanel: React.FC<SongRecommendationsPanelProps> =
                         title="Add to Praise Songs"
                       >
                         <Plus className="w-3.5 h-3.5" />
-                        <span>+ Praise</span>
+                        <span>Praise</span>
                       </button>
                     )}
 
@@ -455,7 +455,7 @@ export const SongRecommendationsPanel: React.FC<SongRecommendationsPanelProps> =
                         title="Add to Worship Songs"
                       >
                         <Plus className="w-3.5 h-3.5" />
-                        <span>+ Worship</span>
+                        <span>Worship</span>
                       </button>
                     )}
                   </div>
