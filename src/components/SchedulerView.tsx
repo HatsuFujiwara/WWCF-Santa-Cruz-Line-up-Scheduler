@@ -515,11 +515,17 @@ export const SchedulerView: React.FC<SchedulerViewProps> = ({
       );
     };
 
+    const handleCloseImportModal = () => {
+      setIsImportModalOpen(false);
+    };
+
     window.addEventListener('request-lineup-songs', handleRequestSongs);
     window.addEventListener('request-service-details', handleRequestDetails);
+    window.addEventListener('close-import-playlist-modal', handleCloseImportModal);
     return () => {
       window.removeEventListener('request-lineup-songs', handleRequestSongs);
       window.removeEventListener('request-service-details', handleRequestDetails);
+      window.removeEventListener('close-import-playlist-modal', handleCloseImportModal);
     };
   }, [praiseSongs, worshipSongs, serviceType, serviceDate]);
 
@@ -1411,7 +1417,8 @@ export const SchedulerView: React.FC<SchedulerViewProps> = ({
         songTitle,
         serviceDate,
         schedules,
-        excludeScheduleId
+        excludeScheduleId,
+        serviceType
       );
       if (check.timesUsedThisMonth > 0) {
         warnings.push(check);
@@ -1592,6 +1599,8 @@ export const SchedulerView: React.FC<SchedulerViewProps> = ({
         schedules={schedules}
         currentPraiseSongs={praiseSongs}
         currentWorshipSongs={worshipSongs}
+        serviceDate={serviceDate}
+        serviceType={serviceType}
         onAddSong={handleAddRecommendedSong}
         onOpenNewSongModal={() => setIsSongFormOpen(true)}
       />

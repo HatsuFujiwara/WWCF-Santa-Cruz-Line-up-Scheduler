@@ -18,6 +18,7 @@ interface SongPickerModalProps {
   isOpen: boolean;
   category: 'praise' | 'worship';
   serviceDate: string;
+  serviceType?: string;
   allSongs: Song[];
   schedules: Schedule[];
   excludeScheduleId?: string;
@@ -30,6 +31,7 @@ export const SongPickerModal: React.FC<SongPickerModalProps> = ({
   isOpen,
   category,
   serviceDate,
+  serviceType,
   allSongs,
   schedules,
   excludeScheduleId,
@@ -62,7 +64,7 @@ export const SongPickerModal: React.FC<SongPickerModalProps> = ({
     }
 
     // Badge filter
-    const usageCheck = SongService.checkMonthlyUsage(s.title, serviceDate, schedules, excludeScheduleId);
+    const usageCheck = SongService.checkMonthlyUsage(s.title, serviceDate, schedules, excludeScheduleId, serviceType);
     if (selectedBadgeFilter === 'used_this_month' && usageCheck.timesUsedThisMonth === 0) {
       return false;
     }

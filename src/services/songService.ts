@@ -2,6 +2,7 @@ import { Song, Schedule, SongCategory } from '../types';
 import { DEFAULT_SONGS } from '../data/songSeedData';
 import { getManilaTodayString, getManilaNowISO } from '../utils/dateUtils';
 import { isFirstRegularServiceOfMonth, getLastRegularSchedulesOfPreviousMonth } from '../utils/scheduleUtils';
+import { isSpecialEvent, isFirstWeekOfMonth, getLastWeekOfPreviousMonthRange } from '../utils/recommendationUtils';
 
 const SONGS_STORAGE_KEY = 'wwcf_songs_v1';
 
@@ -378,18 +379,33 @@ export class SongService {
     }
 
     const targetYearMonth = targetDateStr.substring(0, 7);
+    const isCandidateRegular = !isSpecialEvent(candidateServiceType);
 
     // Filter out the schedule being edited if excludeScheduleId is provided
     const otherSchedules = schedules.filter((s) => s.id !== excludeScheduleId);
 
-    // Find all saved schedules in target month containing this song
+    // Find all saved schedules in target month containing this song (ignoring special events if candidate is regular)
     let candidateSchedules = otherSchedules.filter((sch) => {
+      if (isCandidateRegular && isSpecialEvent(sch.serviceType)) {
+        return false;
+      }
       const schYM = sch.serviceDate ? sch.serviceDate.substring(0, 7) : '';
       return schYM === targetYearMonth;
     });
 
-    // Cross-Month Carry-Over Check
-    if (
+    // Cross-Month Carry-Over Check (First week of month -> check last week of prev month)
+    if (isFirstWeekOfMonth(targetDateStr)) {
+      const range = getLastWeekOfPreviousMonthRange(targetDateStr);
+      const prevWeekSchedules = otherSchedules.filter((sch) => {
+        if (isCandidateRegular && isSpecialEvent(sch.serviceType)) return false;
+        return sch.serviceDate && sch.serviceDate >= range.startDate && sch.serviceDate <= range.endDate;
+      });
+      for (const pSch of prevWeekSchedules) {
+        if (!candidateSchedules.some((s) => s.id === pSch.id)) {
+          candidateSchedules.push(pSch);
+        }
+      }
+    } else if (
       isFirstRegularServiceOfMonth(
         candidateServiceType,
         targetDateStr,
@@ -402,7 +418,9 @@ export class SongService {
       );
       for (const pSch of prevRegulars) {
         if (pSch.id !== excludeScheduleId && !candidateSchedules.some((s) => s.id === pSch.id)) {
-          candidateSchedules.push(pSch);
+          if (!isCandidateRegular || !isSpecialEvent(pSch.serviceType)) {
+            candidateSchedules.push(pSch);
+          }
         }
       }
     }

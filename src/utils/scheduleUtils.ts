@@ -1,5 +1,6 @@
 import { Schedule, ServiceType } from '../types';
 import { getManilaTodayString, getManilaDateParts, addDaysToDateString, getManilaNowISO } from './dateUtils';
+import { isSpecialEvent, isFirstWeekOfMonth, getLastWeekOfPreviousMonthRange } from './recommendationUtils';
 
 export interface RepeatedOccurrence {
   scheduleId: string;
@@ -122,31 +123,47 @@ export function getScheduleRepeatedSongs(
     (s) => s.serviceDate && s.serviceDate.slice(0, 7) === targetMonth
   );
 
-  // Check if targetSchedule is the first regular service of its month (Sunday or Midweek)
-  let extraCrossMonthSchedules: Schedule[] = [];
-  if (
+  // Check if targetSchedule is in the first week of the month (day 1..7)
+  let extraPrevWeekSchedules: Schedule[] = [];
+  if (isFirstWeekOfMonth(targetSchedule.serviceDate)) {
+    const range = getLastWeekOfPreviousMonthRange(targetSchedule.serviceDate);
+    extraPrevWeekSchedules = allSchedules.filter(
+      (s) => s.serviceDate && s.serviceDate >= range.startDate && s.serviceDate <= range.endDate
+    );
+  } else if (
     isFirstRegularServiceOfMonth(
       targetSchedule.serviceType,
       targetSchedule.serviceDate,
       allSchedules
     )
   ) {
-    extraCrossMonthSchedules = getLastRegularSchedulesOfPreviousMonth(
+    extraPrevWeekSchedules = getLastRegularSchedulesOfPreviousMonth(
       targetMonth,
       allSchedules
     );
   }
 
-  // Combine monthSchedules with extraCrossMonthSchedules
-  const fullListToEvaluate = monthSchedules.some((s) => s.id === targetSchedule.id)
+  // Combine monthSchedules with extraPrevWeekSchedules and targetSchedule
+  const rawCandidateList = monthSchedules.some((s) => s.id === targetSchedule.id)
     ? [...monthSchedules]
     : [...monthSchedules, targetSchedule];
 
-  for (const extraSch of extraCrossMonthSchedules) {
-    if (!fullListToEvaluate.some((s) => s.id === extraSch.id)) {
-      fullListToEvaluate.push(extraSch);
+  for (const extraSch of extraPrevWeekSchedules) {
+    if (!rawCandidateList.some((s) => s.id === extraSch.id)) {
+      rawCandidateList.push(extraSch);
     }
   }
+
+  // Special Event Exception: If target service is a regular service (Sunday/Midweek),
+  // filter out any special events (e.g. Youth Fellowship, Special Worship Event).
+  const isTargetRegular = !isSpecialEvent(targetSchedule.serviceType);
+  const fullListToEvaluate = rawCandidateList.filter((s) => {
+    if (s.id === targetSchedule.id) return true; // Always keep the target schedule
+    if (isTargetRegular && isSpecialEvent(s.serviceType)) {
+      return false; // Special events do NOT trigger repeated song warnings for Sunday/Midweek Service
+    }
+    return true;
+  });
 
   const repeatedDetails: RepeatedSongDetail[] = [];
 

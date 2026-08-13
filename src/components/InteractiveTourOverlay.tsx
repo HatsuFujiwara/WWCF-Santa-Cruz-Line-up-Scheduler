@@ -199,6 +199,7 @@ export const InteractiveTourOverlay: React.FC<InteractiveTourOverlayProps> = ({
 
     return () => {
       isMounted = false;
+      setTargetRect(null);
     };
   }, [isOpen, currentStepIndex, step?.id]);
 
@@ -302,11 +303,7 @@ export const InteractiveTourOverlay: React.FC<InteractiveTourOverlayProps> = ({
       setTimeout(() => {
         const arrangeSongsIndex = INTERACTIVE_GUIDE_STEPS.findIndex((s) => s.id === 5);
         const nextIndex = arrangeSongsIndex !== -1 ? arrangeSongsIndex : currentStepIndexRef.current + 1;
-        currentStepIndexRef.current = nextIndex;
-        setCurrentStepIndex(nextIndex);
-        setTimeout(() => {
-          isAdvancingRef.current = false;
-        }, 300);
+        goToStep(nextIndex);
       }, 50);
     };
 
@@ -407,11 +404,7 @@ export const InteractiveTourOverlay: React.FC<InteractiveTourOverlayProps> = ({
         setTimeout(() => {
           const exportIndex = INTERACTIVE_GUIDE_STEPS.findIndex((s) => s.id === 8);
           const nextIndex = exportIndex !== -1 ? exportIndex : currentStepIndexRef.current + 1;
-          currentStepIndexRef.current = nextIndex;
-          setCurrentStepIndex(nextIndex);
-          setTimeout(() => {
-            isAdvancingRef.current = false;
-          }, 300);
+          goToStep(nextIndex);
         }, 50);
       }
     };
@@ -488,13 +481,28 @@ export const InteractiveTourOverlay: React.FC<InteractiveTourOverlayProps> = ({
 
       setTimeout(() => {
         if (currentStepIndexRef.current < INTERACTIVE_GUIDE_STEPS.length - 1) {
-          const nextIndex = currentStepIndexRef.current + 1;
-          currentStepIndexRef.current = nextIndex;
-          setCurrentStepIndex(nextIndex);
+          const currStep = INTERACTIVE_GUIDE_STEPS[currentStepIndexRef.current];
+          if (currStep.id === 4) {
+            const idx4a = INTERACTIVE_GUIDE_STEPS.findIndex((s) => s.id === 41);
+            if (idx4a !== -1) {
+              goToStep(idx4a);
+              return;
+            }
+          } else if (currStep.id === 41 || currStep.id === 42) {
+            const idx5 = INTERACTIVE_GUIDE_STEPS.findIndex((s) => s.id === 5);
+            if (idx5 !== -1) {
+              goToStep(idx5);
+              return;
+            }
+          } else if (currStep.id === 7) {
+            const idx8 = INTERACTIVE_GUIDE_STEPS.findIndex((s) => s.id === 8);
+            if (idx8 !== -1) {
+              goToStep(idx8);
+              return;
+            }
+          }
+          goToStep(currentStepIndexRef.current + 1);
         }
-        setTimeout(() => {
-          isAdvancingRef.current = false;
-        }, 300);
       }, 50);
     };
 
@@ -511,14 +519,194 @@ export const InteractiveTourOverlay: React.FC<InteractiveTourOverlayProps> = ({
     };
   }, [isOpen, currentStepIndex, step]);
 
+  // Interactive Guide Interaction Lock: Restrict ALL pointer and keyboard interactions strictly to the current target control and guide UI while guide is active
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const isElementAllowed = (element: Node | null): boolean => {
+      if (!element) return false;
+
+      // 1. Always allow interactions with guide popover controls (Next, Back, Skip, Close, Don't show again, Topics, etc.)
+      if (popoverRef.current && popoverRef.current.contains(element)) {
+        return true;
+      }
+
+      // 2. Resolve target selector for current guide step
+      let targetSelector = step?.targetSelector;
+      if (step?.id === 42) {
+        const doneBtn = document.querySelector('[data-tour="import-done-btn"]');
+        const submitBtn = document.querySelector('[data-tour="import-submit-btn"]');
+        const urlInput = document.querySelector('[data-tour="playlist-url-input"]');
+        const modalContainer = document.querySelector('[data-tour="import-modal-container"]');
+        const importPlaylistBtn = document.querySelector('[data-tour="import-playlist-btn"]');
+
+        if (doneBtn) targetSelector = '[data-tour="import-done-btn"]';
+        else if (submitBtn) targetSelector = '[data-tour="import-submit-btn"]';
+        else if (urlInput) targetSelector = '[data-tour="playlist-url-input"]';
+        else if (modalContainer) targetSelector = '[data-tour="import-modal-container"]';
+        else if (importPlaylistBtn) targetSelector = '[data-tour="import-playlist-btn"]';
+      }
+
+      let targetEl: Element | null = null;
+      if (targetSelector) {
+        targetEl = document.querySelector(targetSelector);
+        if (targetEl && targetEl.contains(element)) {
+          return true;
+        }
+      }
+
+      // 3. Allow interactions inside active modals (Import Playlist modal, Song Picker, Confirmation modal, etc.)
+      const importModal = document.querySelector('[data-tour="import-modal-container"]');
+      if (importModal && importModal.contains(element)) {
+        return true;
+      }
+
+      const activeModal = document.querySelector('[role="dialog"]');
+      if (activeModal && activeModal.contains(element)) {
+        return true;
+      }
+
+      // 4. Allow dropdown / select / menu options and portal elements spawned by target
+      if (element instanceof Element) {
+        const closestPortal = element.closest(
+          '[role="listbox"], [role="option"], [role="menu"], [role="menuitem"], [data-radix-portal], option'
+        );
+        if (closestPortal) {
+          return true;
+        }
+      }
+
+      // 5. Fallback for missing/unmounted target elements:
+      // If the step has a targetSelector, but the target element is NOT present in the DOM
+      // (or is hidden/unmounted), do NOT lock out the entire application.
+      if (targetSelector && !targetEl) {
+        return true;
+      }
+
+      return false;
+    };
+
+    const handlePointerAndClickCapture = (e: Event) => {
+      const targetNode = e.target as Node | null;
+      if (!isElementAllowed(targetNode)) {
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+      }
+    };
+
+    const handleFocusCapture = (e: FocusEvent) => {
+      const targetNode = e.target as Node | null;
+      if (!isElementAllowed(targetNode)) {
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+
+        // Keep focus trapped inside guide popover or active target
+        if (popoverRef.current) {
+          const focusable = popoverRef.current.querySelector<HTMLElement>(
+            'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+          );
+          if (focusable) {
+            focusable.focus();
+          }
+        }
+      }
+    };
+
+    const handleKeyCapture = (e: KeyboardEvent) => {
+      if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') {
+        const targetNode = e.target as Node | null;
+        if (!isElementAllowed(targetNode)) {
+          e.preventDefault();
+          e.stopPropagation();
+          e.stopImmediatePropagation();
+        }
+      }
+    };
+
+    const pointerEvents = [
+      'click',
+      'pointerdown',
+      'mousedown',
+      'mouseup',
+      'touchstart',
+      'touchend',
+      'dblclick',
+      'contextmenu'
+    ];
+
+    pointerEvents.forEach((evt) => {
+      window.addEventListener(evt, handlePointerAndClickCapture, true);
+    });
+
+    window.addEventListener('focusin', handleFocusCapture, true);
+    window.addEventListener('keydown', handleKeyCapture, true);
+
+    return () => {
+      pointerEvents.forEach((evt) => {
+        window.removeEventListener(evt, handlePointerAndClickCapture, true);
+      });
+      window.removeEventListener('focusin', handleFocusCapture, true);
+      window.removeEventListener('keydown', handleKeyCapture, true);
+    };
+  }, [isOpen, step, currentStepIndex]);
+
   // REMOVED: Auto-open YouTube Playlist Import Modal when entering Step 4B
   // The Interactive Guide is strictly a tutorial/demo layer and must NEVER programmatically click real buttons or open real modals.
 
   if (!isOpen) return null;
 
+  // Atomic Step Transition Helper: Clean up previous step UI & state before advancing/navigating
+  const goToStep = (nextIndex: number) => {
+    const nextStep = INTERACTIVE_GUIDE_STEPS[nextIndex];
+    // If navigating away to a step that is not Step 4B (id 42), cleanly close the import playlist modal if open
+    if (!nextStep || nextStep.id !== 42) {
+      window.dispatchEvent(new CustomEvent('close-import-playlist-modal'));
+    }
+
+    // 1. Immediately clear highlight rect & set transitioning state
+    setTargetRect(null);
+    setIsTransitioning(true);
+    setIsTopicMenuOpen(false);
+
+    // 2. Reset step tracking refs
+    isAdvancingRef.current = false;
+    step4InitializedRef.current = false;
+    step4InitialSongsRef.current = null;
+    step4PendingModalCloseRef.current = false;
+
+    // 3. Reset completion UI state
+    setIsSaveCompletedState(false);
+
+    // 4. Update step index
+    if (nextIndex >= 0 && nextIndex < INTERACTIVE_GUIDE_STEPS.length) {
+      currentStepIndexRef.current = nextIndex;
+      setCurrentStepIndex(nextIndex);
+    }
+  };
+
+  // Helper to cleanly clean up all temporary guide state and close the overlay
+  const cleanupAndCloseGuide = (action: () => void) => {
+    // Cleanly close the YouTube Playlist Import Modal on guide exit/completion/skip
+    window.dispatchEvent(new CustomEvent('close-import-playlist-modal'));
+
+    setTargetRect(null);
+    setIsTopicMenuOpen(false);
+    setIsSaveCompletedState(false);
+    setIsTransitioning(false);
+
+    isAdvancingRef.current = false;
+    step4InitializedRef.current = false;
+    step4InitialSongsRef.current = null;
+    step4PendingModalCloseRef.current = false;
+
+    action();
+  };
+
   const getNextButtonLabel = () => {
-    if (step.id === 7) return 'Finish Guide';
-    if (step.id === 8 || step.id >= 10) return 'Finish Topic';
+    if (step.id === 8) return 'Finish Guide';
+    if (step.id >= 10) return 'Finish Topic';
     return 'Next Step';
   };
 
@@ -526,26 +714,28 @@ export const InteractiveTourOverlay: React.FC<InteractiveTourOverlayProps> = ({
     if (step.id === 4) {
       const idx4a = INTERACTIVE_GUIDE_STEPS.findIndex((s) => s.id === 41);
       if (idx4a !== -1) {
-        setCurrentStepIndex(idx4a);
-        currentStepIndexRef.current = idx4a;
+        goToStep(idx4a);
         return;
       }
     } else if (step.id === 41 || step.id === 42) {
       const idx5 = INTERACTIVE_GUIDE_STEPS.findIndex((s) => s.id === 5);
       if (idx5 !== -1) {
-        setCurrentStepIndex(idx5);
-        currentStepIndexRef.current = idx5;
+        goToStep(idx5);
         return;
       }
-    } else if (step.id === 7 || step.id === 8 || step.id >= 10) {
+    } else if (step.id === 7) {
+      const idx8 = INTERACTIVE_GUIDE_STEPS.findIndex((s) => s.id === 8);
+      if (idx8 !== -1) {
+        goToStep(idx8);
+        return;
+      }
+    } else if (step.id === 8 || step.id >= 10) {
       handleComplete();
       return;
     }
 
     if (currentStepIndex < INTERACTIVE_GUIDE_STEPS.length - 1) {
-      const next = currentStepIndex + 1;
-      setCurrentStepIndex(next);
-      currentStepIndexRef.current = next;
+      goToStep(currentStepIndex + 1);
     } else {
       handleComplete();
     }
@@ -555,32 +745,41 @@ export const InteractiveTourOverlay: React.FC<InteractiveTourOverlayProps> = ({
     if (step.id === 41 || step.id === 42 || step.id === 5) {
       const idx4 = INTERACTIVE_GUIDE_STEPS.findIndex((s) => s.id === 4);
       if (idx4 !== -1) {
-        setCurrentStepIndex(idx4);
-        currentStepIndexRef.current = idx4;
+        goToStep(idx4);
+        return;
+      }
+    } else if (step.id === 8) {
+      const idx7 = INTERACTIVE_GUIDE_STEPS.findIndex((s) => s.id === 7);
+      if (idx7 !== -1) {
+        goToStep(idx7);
         return;
       }
     }
 
     if (currentStepIndex > 0) {
-      const prev = currentStepIndex - 1;
-      setCurrentStepIndex(prev);
-      currentStepIndexRef.current = prev;
+      goToStep(currentStepIndex - 1);
     }
   };
 
   const handleSkip = () => {
-    StorageService.setOnboardingSkippedSession(true);
-    onClose();
+    cleanupAndCloseGuide(() => {
+      StorageService.setOnboardingSkippedSession(true);
+      onClose();
+    });
   };
 
   const handleNeverShow = () => {
-    StorageService.setOnboardingDisabled(true);
-    onClose();
+    cleanupAndCloseGuide(() => {
+      StorageService.setOnboardingDisabled(true);
+      onClose();
+    });
   };
 
   const handleComplete = () => {
-    StorageService.setOnboardingDisabled(true);
-    onClose();
+    cleanupAndCloseGuide(() => {
+      StorageService.setOnboardingDisabled(true);
+      onClose();
+    });
   };
 
   const totalSteps = INTERACTIVE_GUIDE_STEPS.length;
@@ -920,10 +1119,8 @@ export const InteractiveTourOverlay: React.FC<InteractiveTourOverlayProps> = ({
                 onClick={() => {
                   const targetIdx = INTERACTIVE_GUIDE_STEPS.findIndex((s) => s.id === topic.id);
                   if (targetIdx !== -1) {
-                    setCurrentStepIndex(targetIdx);
-                    currentStepIndexRef.current = targetIdx;
+                    goToStep(targetIdx);
                   }
-                  setIsTopicMenuOpen(false);
                 }}
                 className={`w-full text-left px-3 py-1.5 rounded-lg font-medium transition-colors cursor-pointer flex items-center justify-between ${
                   step.id === topic.id
@@ -1066,8 +1263,7 @@ export const InteractiveTourOverlay: React.FC<InteractiveTourOverlayProps> = ({
                     onClick={() => {
                       const step4aIndex = INTERACTIVE_GUIDE_STEPS.findIndex((s) => s.id === 41);
                       if (step4aIndex !== -1) {
-                        setCurrentStepIndex(step4aIndex);
-                        currentStepIndexRef.current = step4aIndex;
+                        goToStep(step4aIndex);
                       }
                     }}
                     className="p-3 bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900/80 border border-indigo-200 dark:border-indigo-800 rounded-xl text-left transition-all cursor-pointer group flex items-start gap-3"
@@ -1091,8 +1287,7 @@ export const InteractiveTourOverlay: React.FC<InteractiveTourOverlayProps> = ({
                     onClick={() => {
                       const step4bIndex = INTERACTIVE_GUIDE_STEPS.findIndex((s) => s.id === 42);
                       if (step4bIndex !== -1) {
-                        setCurrentStepIndex(step4bIndex);
-                        currentStepIndexRef.current = step4bIndex;
+                        goToStep(step4bIndex);
                       }
                     }}
                     className="p-3 bg-slate-50 dark:bg-slate-800/80 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-left transition-all cursor-pointer group flex items-start gap-3"
@@ -1121,8 +1316,7 @@ export const InteractiveTourOverlay: React.FC<InteractiveTourOverlayProps> = ({
                     onClick={() => {
                       const step4Index = INTERACTIVE_GUIDE_STEPS.findIndex((s) => s.id === 4);
                       if (step4Index !== -1) {
-                        setCurrentStepIndex(step4Index);
-                        currentStepIndexRef.current = step4Index;
+                        goToStep(step4Index);
                       }
                     }}
                     className="text-indigo-600 dark:text-indigo-400 hover:underline font-semibold flex items-center gap-1 cursor-pointer"
@@ -1186,8 +1380,8 @@ export const InteractiveTourOverlay: React.FC<InteractiveTourOverlayProps> = ({
               Exit Guide
             </button>
 
-            {/* Show Next Step button on Service Type (2), Service Date (3), Arrange Songs (5), Assign Members (6), Save Lineup (7), and Help Topics (8, >= 10) */}
-            {(step.id === 2 || step.id === 3 || step.id === 5 || step.id === 6 || step.id === 7 || step.id === 8 || step.id >= 10) && (
+            {/* Show Next Step button for all active guide steps when not in completion card state */}
+            {!isSaveCompletedState && (
               <button
                 type="button"
                 onClick={handleNext}

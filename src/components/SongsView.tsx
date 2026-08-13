@@ -53,6 +53,16 @@ export const SongsView: React.FC<SongsViewProps> = ({
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [editingSong, setEditingSong] = useState<Song | null>(null);
 
+  React.useEffect(() => {
+    const handleCloseImportModal = () => {
+      setIsImportModalOpen(false);
+    };
+    window.addEventListener('close-import-playlist-modal', handleCloseImportModal);
+    return () => {
+      window.removeEventListener('close-import-playlist-modal', handleCloseImportModal);
+    };
+  }, []);
+
   // Bulk Delete Modal state
   const [bulkDeleteConfig, setBulkDeleteConfig] = useState<{
     isOpen: boolean;

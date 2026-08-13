@@ -1,5 +1,5 @@
 import { Song, Schedule } from '../types';
-import { formatDateDisplayManila } from './dateUtils';
+import { formatDateDisplayManila, getManilaTodayString } from './dateUtils';
 
 export interface RecommendedSong {
   song: Song;
@@ -16,6 +16,99 @@ export interface RecommendedSong {
 
 export type CategoryFilter = 'all' | 'praise' | 'worship';
 export type StatusFilter = 'all' | 'new' | 'once' | 'least_played' | 'seasonal';
+
+/**
+ * Determines whether a service type is considered a Special Event
+ * (e.g. Youth Fellowship, Special Worship Event, etc.) vs a Regular Service (Sunday/Midweek).
+ */
+export function isSpecialEvent(serviceType?: string): boolean {
+  if (!serviceType) return false;
+  const clean = serviceType.trim();
+  return clean !== 'Sunday Service' && clean !== 'Midweek Prayer Service';
+}
+
+/**
+ * Returns true if the target date is in the first 7 calendar days of the month (Day 1..7).
+ */
+export function isFirstWeekOfMonth(dateStr: string): boolean {
+  if (!dateStr || dateStr.length < 10) return false;
+  const day = parseInt(dateStr.slice(8, 10), 10);
+  return !isNaN(day) && day >= 1 && day <= 7;
+}
+
+/**
+ * Calculates the start and end date strings (YYYY-MM-DD) for the final 7 calendar days of the previous month.
+ */
+export function getLastWeekOfPreviousMonthRange(dateStr: string): { startDate: string; endDate: string } {
+  const [yStr, mStr] = dateStr.split('-');
+  let year = parseInt(yStr, 10);
+  let month = parseInt(mStr, 10);
+  if (month === 1) {
+    month = 12;
+    year -= 1;
+  } else {
+    month -= 1;
+  }
+  const daysInPrevMonth = new Date(year, month, 0).getDate();
+  const startDay = daysInPrevMonth - 6;
+  const mPadded = String(month).padStart(2, '0');
+  const startDayPadded = String(startDay).padStart(2, '0');
+  const endDayPadded = String(daysInPrevMonth).padStart(2, '0');
+  return {
+    startDate: `${year}-${mPadded}-${startDayPadded}`,
+    endDate: `${year}-${mPadded}-${endDayPadded}`
+  };
+}
+
+/**
+ * Checks if a song is prohibited from recommendations based on:
+ * 1) Played in the current month (same calendar YYYY-MM).
+ * 2) Played in the last 7 calendar days of the previous month (if current date is day 1..7 of new month).
+ * Special events (e.g. Youth Fellowship) do NOT restrict recommendations for regular services (Sunday/Midweek).
+ */
+export function isSongProhibitedByDateRules(
+  songTitle: string,
+  referenceDateStr: string,
+  schedules: Schedule[],
+  targetServiceType?: string
+): boolean {
+  const cleanTitle = songTitle.trim().toLowerCase();
+  if (!cleanTitle || !referenceDateStr || schedules.length === 0) return false;
+
+  const refYM = referenceDateStr.slice(0, 7);
+  const inFirstWeek = isFirstWeekOfMonth(referenceDateStr);
+  const prevWeekRange = inFirstWeek ? getLastWeekOfPreviousMonthRange(referenceDateStr) : null;
+  const isTargetRegular = !isSpecialEvent(targetServiceType);
+
+  for (const sch of schedules) {
+    if (!sch.serviceDate) continue;
+
+    // Check if sch contains this song
+    const inPraise = (sch.praiseSongs || []).some((s) => s.trim().toLowerCase() === cleanTitle);
+    const inWorship = (sch.worshipSongs || []).some((s) => s.trim().toLowerCase() === cleanTitle);
+    if (!inPraise && !inWorship) continue;
+
+    // Special event exception: If recommending for regular service, ignore special events
+    if (isTargetRegular && isSpecialEvent(sch.serviceType)) {
+      continue;
+    }
+
+    // Rule 1: Current Month Rule (played during same calendar month)
+    const schYM = sch.serviceDate.slice(0, 7);
+    if (schYM === refYM) {
+      return true;
+    }
+
+    // Rule 2: Month Boundary Rule (played during last 7 days of prev month when in first 7 days of new month)
+    if (inFirstWeek && prevWeekRange) {
+      if (sch.serviceDate >= prevWeekRange.startDate && sch.serviceDate <= prevWeekRange.endDate) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
 
 export const COMMON_THEMES = [
   'Christmas',
@@ -116,16 +209,40 @@ export function getSmartSongRecommendations(
     statusFilter?: StatusFilter;
     themeFilter?: string;
     searchQuery?: string;
-    referenceDate?: Date;
+    referenceDate?: Date | string;
+    targetServiceType?: string;
   }
 ): RecommendedSong[] {
-  const refDate = options?.referenceDate || new Date();
+  let refDateStr = getManilaTodayString();
+  let refDate = new Date();
+
+  if (options?.referenceDate) {
+    if (typeof options.referenceDate === 'string') {
+      refDateStr = options.referenceDate;
+      if (/^\d{4}-\d{2}-\d{2}$/.test(refDateStr)) {
+        const [y, m, d] = refDateStr.split('-').map(Number);
+        refDate = new Date(y, m - 1, d);
+      }
+    } else {
+      refDate = options.referenceDate;
+      const y = refDate.getFullYear();
+      const m = String(refDate.getMonth() + 1).padStart(2, '0');
+      const d = String(refDate.getDate()).padStart(2, '0');
+      refDateStr = `${y}-${m}-${d}`;
+    }
+  }
+
   const currentMonthIdx = refDate.getMonth(); // 0 - 11
   const seasonalConfig = MONTHLY_SEASONAL_THEMES[currentMonthIdx];
 
   const results: RecommendedSong[] = [];
 
   for (const song of allSongs) {
+    // Exclude songs prohibited by the new date-based rules BEFORE applying recommendation ranking
+    if (isSongProhibitedByDateRules(song.title, refDateStr, schedules, options?.targetServiceType)) {
+      continue;
+    }
+
     const stats = getSongUsageStats(song, schedules);
     const timesUsed = stats.timesUsed;
     const lastUsedDate = stats.lastUsedDate;

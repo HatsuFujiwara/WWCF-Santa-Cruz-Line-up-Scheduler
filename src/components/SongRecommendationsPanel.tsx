@@ -31,6 +31,8 @@ interface SongRecommendationsPanelProps {
   schedules: Schedule[];
   currentPraiseSongs: string[];
   currentWorshipSongs: string[];
+  serviceDate?: string;
+  serviceType?: string;
   onAddSong: (category: 'praise' | 'worship', songTitle: string, defaultKey?: string) => void;
   onOpenNewSongModal?: () => void;
 }
@@ -40,6 +42,8 @@ export const SongRecommendationsPanel: React.FC<SongRecommendationsPanelProps> =
   schedules,
   currentPraiseSongs,
   currentWorshipSongs,
+  serviceDate,
+  serviceType,
   onAddSong,
   onOpenNewSongModal
 }) => {
@@ -59,9 +63,11 @@ export const SongRecommendationsPanel: React.FC<SongRecommendationsPanelProps> =
       categoryFilter,
       statusFilter,
       themeFilter: selectedTheme,
-      searchQuery
+      searchQuery,
+      referenceDate: serviceDate,
+      targetServiceType: serviceType
     });
-  }, [allSongs, schedules, categoryFilter, statusFilter, selectedTheme, searchQuery]);
+  }, [allSongs, schedules, categoryFilter, statusFilter, selectedTheme, searchQuery, serviceDate, serviceType]);
 
   // Sets of clean song titles currently in the active schedule draft
   const activePraiseTitles = useMemo(() => {
