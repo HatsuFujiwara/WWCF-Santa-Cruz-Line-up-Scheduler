@@ -1,4 +1,4 @@
-import { Song, Schedule, SongCategory } from '../types';
+import { Song, Schedule, SongCategory, SongFamily } from '../types';
 import { DEFAULT_SONGS } from '../data/songSeedData';
 import { getManilaTodayString, getManilaNowISO } from '../utils/dateUtils';
 import { isFirstRegularServiceOfMonth, getLastRegularSchedulesOfPreviousMonth } from '../utils/scheduleUtils';
@@ -123,6 +123,12 @@ export class SongService {
         qobuzUrl: songData.qobuzUrl || '',
         tidalUrl: songData.tidalUrl || '',
         geniusUrl: songData.geniusUrl || '',
+        songFamilyId: songData.songFamilyId,
+        relationshipType: songData.relationshipType,
+        songwriters: songData.songwriters,
+        composers: songData.composers,
+        originalArtist: songData.originalArtist,
+        lyrics: songData.lyrics,
         dateAdded: songData.dateAdded || getManilaTodayString(),
         lastUsedDate: songData.lastUsedDate,
         timesUsed: songData.timesUsed ?? 0,
@@ -167,6 +173,12 @@ export class SongService {
         qobuzUrl: songData.qobuzUrl || '',
         tidalUrl: songData.tidalUrl || '',
         geniusUrl: songData.geniusUrl || '',
+        songFamilyId: songData.songFamilyId,
+        relationshipType: songData.relationshipType,
+        songwriters: songData.songwriters,
+        composers: songData.composers,
+        originalArtist: songData.originalArtist,
+        lyrics: songData.lyrics,
         dateAdded: getManilaTodayString(),
         timesUsed: 0,
         serviceHistory: [],
@@ -212,6 +224,17 @@ export class SongService {
     const targetId = id.trim();
     const targetTitle = targetId.toLowerCase();
 
+    // Clean up song family reference if exists
+    try {
+      const { SongFamilyService } = await import('./songFamilyService');
+      const songToDelete = songs.find((s) => s.id === targetId || s.title.trim().toLowerCase() === targetTitle);
+      if (songToDelete) {
+        await SongFamilyService.unlinkSongFromFamily(songToDelete.id);
+      }
+    } catch {
+      // Ignore cleanup error if service not loaded
+    }
+
     const filtered = songs.filter(
       (s) => s.id !== targetId && s.title.trim().toLowerCase() !== targetTitle
     );
@@ -225,6 +248,16 @@ export class SongService {
     if (!ids || ids.length === 0) return;
     const songs = await this.getSongs();
     const idSet = new Set(ids.map((id) => id.trim()));
+
+    try {
+      const { SongFamilyService } = await import('./songFamilyService');
+      for (const id of ids) {
+        await SongFamilyService.unlinkSongFromFamily(id.trim());
+      }
+    } catch {
+      // Ignore
+    }
+
     const filtered = songs.filter((s) => !idSet.has(s.id));
     localStorage.setItem(SONGS_STORAGE_KEY, JSON.stringify(filtered));
   }
@@ -320,18 +353,79 @@ export class SongService {
   }
 
   /**
-   * Calculates how many times a song appears in saved worship line-ups
+   * Helper to retrieve all titles that share the same Song Family identity as a given song title.
+   */
+  static getFamilySongTitles(
+    songTitle: string,
+    allSongs?: Song[],
+    allFamilies?: SongFamily[]
+  ): string[] {
+    const cleanTitle = songTitle.trim().toLowerCase();
+    if (!cleanTitle) return [];
+
+    let songs = allSongs;
+    let families = allFamilies;
+
+    if (!songs) {
+      try {
+        const data = localStorage.getItem(SONGS_STORAGE_KEY);
+        songs = data ? JSON.parse(data) : [];
+      } catch {
+        songs = [];
+      }
+    }
+
+    if (!families) {
+      try {
+        const famData = localStorage.getItem('wwcf_song_families_v1');
+        families = famData ? JSON.parse(famData) : [];
+      } catch {
+        families = [];
+      }
+    }
+
+    const matchedSong = (songs || []).find((s) => s.title.trim().toLowerCase() === cleanTitle);
+    let targetFamily: SongFamily | undefined = undefined;
+
+    if (matchedSong && matchedSong.songFamilyId) {
+      targetFamily = (families || []).find((f) => f.id === matchedSong.songFamilyId);
+    }
+
+    if (!targetFamily) {
+      targetFamily = (families || []).find((f) => f.name.trim().toLowerCase() === cleanTitle);
+    }
+
+    if (targetFamily && targetFamily.versionIds.length > 0) {
+      const familyVersionIdSet = new Set(targetFamily.versionIds);
+      const memberTitles = (songs || [])
+        .filter((s) => familyVersionIdSet.has(s.id))
+        .map((s) => s.title.trim().toLowerCase());
+
+      if (!memberTitles.includes(cleanTitle)) {
+        memberTitles.push(cleanTitle);
+      }
+      return memberTitles;
+    }
+
+    return [cleanTitle];
+  }
+
+  /**
+   * Calculates how many times a song (or any version in its Song Family) appears in saved worship line-ups
    * within a specific calendar month (Asia/Manila context).
    * Defaults to the current calendar month (e.g., "2026-08").
    */
   static getMonthlyUsageCount(
     songTitle: string,
     schedules: Schedule[],
-    targetMonthStr?: string
+    targetMonthStr?: string,
+    allSongs?: Song[],
+    allFamilies?: SongFamily[]
   ): number {
     const cleanTitle = songTitle.trim().toLowerCase();
     if (!cleanTitle || !schedules || schedules.length === 0) return 0;
 
+    const familyTitles = new Set(this.getFamilySongTitles(songTitle, allSongs, allFamilies));
     const monthStr = targetMonthStr || getManilaTodayString().substring(0, 7);
 
     let count = 0;
@@ -342,14 +436,14 @@ export class SongService {
 
       if (sch.praiseSongs) {
         for (const p of sch.praiseSongs) {
-          if (p.trim().toLowerCase() === cleanTitle) {
+          if (familyTitles.has(p.trim().toLowerCase())) {
             count++;
           }
         }
       }
       if (sch.worshipSongs) {
         for (const w of sch.worshipSongs) {
-          if (w.trim().toLowerCase() === cleanTitle) {
+          if (familyTitles.has(w.trim().toLowerCase())) {
             count++;
           }
         }
@@ -360,7 +454,7 @@ export class SongService {
   }
 
   /**
-   * Checks whether a song has been used during the target service month (e.g., "2026-08").
+   * Checks whether a song (or its Song Family) has been used during the target service month (e.g., "2026-08").
    * Applies the First-Come, First-Serve rule:
    * The first line-up that used the song in the calendar month (by service date,
    * then creation timestamp/id) is considered the original usage and MUST NOT be marked as repeated.
@@ -371,13 +465,16 @@ export class SongService {
     targetDateStr: string,
     schedules: Schedule[],
     excludeScheduleId?: string,
-    candidateServiceType: string = 'Sunday Service'
+    candidateServiceType: string = 'Sunday Service',
+    allSongs?: Song[],
+    allFamilies?: SongFamily[]
   ): MonthlyUsageCheckResult {
     const cleanTitle = songTitle.trim().toLowerCase();
     if (!cleanTitle || !targetDateStr) {
       return { songTitle, timesUsedThisMonth: 0, serviceTypes: [], datesUsed: [], affectedSchedules: [] };
     }
 
+    const familyTitles = new Set(this.getFamilySongTitles(songTitle, allSongs, allFamilies));
     const targetYearMonth = targetDateStr.substring(0, 7);
     const isCandidateRegular = !isSpecialEvent(candidateServiceType);
 
@@ -426,15 +523,15 @@ export class SongService {
     }
 
     const containingSchedules = candidateSchedules.filter((sch) => {
-      const hasPraise = (sch.praiseSongs || []).some((s) => s.trim().toLowerCase() === cleanTitle);
-      const hasWorship = (sch.worshipSongs || []).some((s) => s.trim().toLowerCase() === cleanTitle);
+      const hasPraise = (sch.praiseSongs || []).some((s) => familyTitles.has(s.trim().toLowerCase()));
+      const hasWorship = (sch.worshipSongs || []).some((s) => familyTitles.has(s.trim().toLowerCase()));
       return hasPraise || hasWorship;
     });
 
     // Calculate total times used in existing schedules this month
     const totalUsesInOtherSchedules = containingSchedules.reduce((acc, sch) => {
-      const praiseCount = (sch.praiseSongs || []).filter((s) => s.trim().toLowerCase() === cleanTitle).length;
-      const worshipCount = (sch.worshipSongs || []).filter((s) => s.trim().toLowerCase() === cleanTitle).length;
+      const praiseCount = (sch.praiseSongs || []).filter((s) => familyTitles.has(s.trim().toLowerCase())).length;
+      const worshipCount = (sch.worshipSongs || []).filter((s) => familyTitles.has(s.trim().toLowerCase())).length;
       return acc + praiseCount + worshipCount;
     }, 0);
 

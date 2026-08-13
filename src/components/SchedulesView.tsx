@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Schedule, formatAssignmentMemberNames } from '../types';
 import { getScheduleRepeatedSongs, ensureMonthlyPlaceholders, isScheduleEmpty } from '../utils/scheduleUtils';
 import { formatDateDisplayManila, getManilaTodayString } from '../utils/dateUtils';
+import { useMultiSelect } from '../hooks/useMultiSelect';
 import {
   CalendarDays,
   Search,
@@ -15,12 +16,9 @@ import {
   X,
   Filter,
   ArrowUpDown,
-  CheckSquare,
-  Square,
   Calendar,
   ChevronDown,
-  ChevronUp,
-  Sparkles
+  ChevronUp
 } from 'lucide-react';
 
 interface SchedulesViewProps {
@@ -124,7 +122,6 @@ export const SchedulesView: React.FC<SchedulesViewProps> = ({
     const saved = localStorage.getItem('schedules_sort_option');
     return (saved as ScheduleSortOption) || 'date-desc';
   });
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [openRepeatedPopoverId, setOpenRepeatedPopoverId] = useState<string | null>(null);
 
   // Ensure monthly placeholders when a specific month filter is selected
@@ -249,58 +246,65 @@ export const SchedulesView: React.FC<SchedulesViewProps> = ({
     });
   }, [schedules, searchQuery, serviceFilter, monthFilter, sortOption]);
 
-  // Selection Logic
-  const allVisibleSelected =
-    filteredSchedules.length > 0 &&
-    filteredSchedules.every((s) => selectedIds.has(s.id));
+  // Multi-select hook (Matching Member Editor pattern)
+  const {
+    selectedIds,
+    selectedCount,
+    toggleSelect,
+    toggleSelectAll,
+    clearSelection,
+    isSelected,
+    isAllSelected,
+    isSomeSelected
+  } = useMultiSelect(filteredSchedules);
 
-  const isSomeSelected =
-    filteredSchedules.some((s) => selectedIds.has(s.id)) && !allVisibleSelected;
-
-  const toggleSelectAll = () => {
-    if (allVisibleSelected) {
-      // Unselect all visible
-      const newSet = new Set(selectedIds);
-      filteredSchedules.forEach((s) => newSet.delete(s.id));
-      setSelectedIds(newSet);
-    } else {
-      // Select all visible
-      const newSet = new Set(selectedIds);
-      filteredSchedules.forEach((s) => newSet.add(s.id));
-      setSelectedIds(newSet);
+  // Top Toolbar Action Handlers
+  const handleEditSelected = () => {
+    if (selectedCount !== 1) return;
+    const selectedSchedule = filteredSchedules.find((s) => selectedIds.has(s.id));
+    if (selectedSchedule) {
+      onEditSchedule(selectedSchedule);
     }
   };
 
-  const toggleSelectRow = (id: string) => {
-    const newSet = new Set(selectedIds);
-    if (newSet.has(id)) {
-      newSet.delete(id);
-    } else {
-      newSet.add(id);
+  const handleDuplicateSelected = () => {
+    if (selectedCount !== 1) return;
+    const selectedSchedule = filteredSchedules.find((s) => selectedIds.has(s.id));
+    if (selectedSchedule) {
+      onDuplicateSchedule(selectedSchedule);
     }
-    setSelectedIds(newSet);
   };
 
-  const handleBulkDelete = () => {
+  const handleExportPDFSelected = () => {
+    if (selectedCount === 0) return;
+    const selectedList = schedules.filter((s) => selectedIds.has(s.id));
+    selectedList.forEach((sch) => onExportPDF(sch));
+  };
+
+  const handleExportPNGSelected = () => {
+    if (selectedCount === 0) return;
+    const selectedList = schedules.filter((s) => selectedIds.has(s.id));
+    selectedList.forEach((sch) => onExportPNG(sch));
+  };
+
+  const handleDeleteSelected = () => {
     const ids = Array.from(selectedIds);
     if (ids.length === 0) return;
-    if (onBulkDeleteSchedules) {
+    if (ids.length === 1) {
+      onDeleteSchedule(ids[0]);
+    } else if (onBulkDeleteSchedules) {
       onBulkDeleteSchedules(ids);
     } else {
       ids.forEach((id) => onDeleteSchedule(id));
     }
-    setSelectedIds(new Set());
-  };
-
-  const handleBulkExportPDF = () => {
-    const selectedSchedules = schedules.filter((s) => selectedIds.has(s.id));
-    selectedSchedules.forEach((sch) => onExportPDF(sch));
+    clearSelection();
   };
 
   return (
     <div data-tour="schedules-view" className="space-y-6 animate-in fade-in duration-300">
-      {/* Header & Controls Bar */}
+      {/* Main Container Card: Header, Filters, Search & Top Action Toolbar */}
       <div className="p-6 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs space-y-4">
+        {/* Header & Search */}
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
             <h2 className="text-base sm:text-lg font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
@@ -308,7 +312,7 @@ export const SchedulesView: React.FC<SchedulesViewProps> = ({
               <span>Saved Worship Schedules ({filteredSchedules.length})</span>
             </h2>
             <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5 font-medium">
-              Manage saved worship line-ups, filter by month and service type, or export/bulk delete.
+              Manage saved worship line-ups, filter by month and service type, or export/edit selected schedules.
             </p>
           </div>
 
@@ -319,8 +323,18 @@ export const SchedulesView: React.FC<SchedulesViewProps> = ({
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search date, song, or member..."
-              className="w-full pl-9 pr-4 py-2 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all"
+              className="w-full pl-9 pr-8 py-2 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all"
             />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery('')}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 p-0.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
+                title="Clear search"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
           </div>
         </div>
 
@@ -390,48 +404,138 @@ export const SchedulesView: React.FC<SchedulesViewProps> = ({
             </div>
           </div>
         </div>
-      </div>
 
-      {/* Bulk Action Toolbar */}
-      {selectedIds.size > 0 && (
-        <div className="p-4 rounded-xl bg-indigo-50 dark:bg-indigo-950/80 border border-indigo-200 dark:border-indigo-800 flex flex-wrap items-center justify-between gap-3 animate-in slide-in-from-top-2 duration-200">
-          <div className="flex items-center gap-2 text-xs font-bold text-indigo-900 dark:text-indigo-200">
-            <span className="w-6 h-6 rounded-full bg-indigo-600 text-white flex items-center justify-center text-[11px]">
-              {selectedIds.size}
-            </span>
-            <span>{selectedIds.size} line-up{selectedIds.size > 1 ? 's' : ''} selected</span>
-          </div>
-
-          <div className="flex items-center gap-2">
+        {/* 🌟 Universal Action Buttons Toolbar (Matching Member Editor Pattern) */}
+        <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-slate-100 dark:border-slate-800">
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Edit Line-up Button */}
             <button
               type="button"
-              onClick={handleBulkExportPDF}
-              className="px-3 py-1.5 text-xs font-bold bg-white dark:bg-slate-900 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-700 rounded-lg hover:bg-indigo-100 dark:hover:bg-slate-800 transition-colors flex items-center gap-1.5 cursor-pointer shadow-2xs"
+              disabled={selectedCount !== 1}
+              onClick={handleEditSelected}
+              className={`inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-lg border transition-all cursor-pointer select-none ${
+                selectedCount === 1
+                  ? 'bg-indigo-600 hover:bg-indigo-700 text-white border-indigo-600 shadow-xs'
+                  : 'bg-slate-100 dark:bg-slate-800/60 text-slate-400 dark:text-slate-600 border-slate-200 dark:border-slate-800/80 cursor-not-allowed opacity-60'
+              }`}
+              title={
+                selectedCount === 0
+                  ? 'Select 1 line-up to edit'
+                  : selectedCount > 1
+                  ? 'Select only 1 line-up to edit'
+                  : 'Edit selected line-up'
+              }
+            >
+              <Edit3 className="w-3.5 h-3.5" />
+              <span>Edit Line-up</span>
+            </button>
+
+            {/* Duplicate Line-up Button */}
+            <button
+              type="button"
+              disabled={selectedCount !== 1}
+              onClick={handleDuplicateSelected}
+              className={`inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-lg border transition-all cursor-pointer select-none ${
+                selectedCount === 1
+                  ? 'bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-600 shadow-xs'
+                  : 'bg-slate-100 dark:bg-slate-800/60 text-slate-400 dark:text-slate-600 border-slate-200 dark:border-slate-800/80 cursor-not-allowed opacity-60'
+              }`}
+              title={
+                selectedCount === 0
+                  ? 'Select 1 line-up to duplicate'
+                  : selectedCount > 1
+                  ? 'Select only 1 line-up to duplicate'
+                  : 'Duplicate selected line-up'
+              }
+            >
+              <Copy className="w-3.5 h-3.5" />
+              <span>Duplicate Line-up</span>
+            </button>
+
+            {/* Export PDF Button */}
+            <button
+              type="button"
+              disabled={selectedCount === 0}
+              onClick={handleExportPDFSelected}
+              className={`inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-lg border transition-all cursor-pointer select-none ${
+                selectedCount >= 1
+                  ? 'bg-indigo-50 dark:bg-indigo-950/80 text-indigo-700 dark:text-indigo-300 border-indigo-300 dark:border-indigo-800 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 shadow-xs'
+                  : 'bg-slate-100 dark:bg-slate-800/60 text-slate-400 dark:text-slate-600 border-slate-200 dark:border-slate-800/80 cursor-not-allowed opacity-60'
+              }`}
+              title={
+                selectedCount === 0
+                  ? 'Select line-up(s) to export PDF'
+                  : selectedCount === 1
+                  ? 'Export selected line-up as PDF'
+                  : `Export ${selectedCount} selected line-ups as PDF`
+              }
             >
               <FileDown className="w-3.5 h-3.5" />
-              <span>Export Selected</span>
+              <span>Export PDF{selectedCount > 1 ? ` (${selectedCount})` : ''}</span>
             </button>
 
+            {/* Export PNG Button */}
             <button
               type="button"
-              onClick={handleBulkDelete}
-              className="px-3 py-1.5 text-xs font-bold bg-rose-600 hover:bg-rose-700 text-white rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer shadow-2xs"
+              disabled={selectedCount === 0}
+              onClick={handleExportPNGSelected}
+              className={`inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-lg border transition-all cursor-pointer select-none ${
+                selectedCount >= 1
+                  ? 'bg-indigo-50 dark:bg-indigo-950/80 text-indigo-700 dark:text-indigo-300 border-indigo-300 dark:border-indigo-800 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 shadow-xs'
+                  : 'bg-slate-100 dark:bg-slate-800/60 text-slate-400 dark:text-slate-600 border-slate-200 dark:border-slate-800/80 cursor-not-allowed opacity-60'
+              }`}
+              title={
+                selectedCount === 0
+                  ? 'Select line-up(s) to export PNG'
+                  : selectedCount === 1
+                  ? 'Export selected line-up as PNG image'
+                  : `Export ${selectedCount} selected line-ups as PNG`
+              }
+            >
+              <Image className="w-3.5 h-3.5" />
+              <span>Export PNG{selectedCount > 1 ? ` (${selectedCount})` : ''}</span>
+            </button>
+
+            {/* Delete Line-up Button */}
+            <button
+              type="button"
+              disabled={selectedCount === 0}
+              onClick={handleDeleteSelected}
+              className={`inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-lg border transition-all cursor-pointer select-none ${
+                selectedCount >= 1
+                  ? 'bg-rose-600 hover:bg-rose-700 text-white border-rose-600 shadow-xs'
+                  : 'bg-slate-100 dark:bg-slate-800/60 text-slate-400 dark:text-slate-600 border-slate-200 dark:border-slate-800/80 cursor-not-allowed opacity-60'
+              }`}
+              title={
+                selectedCount === 0
+                  ? 'Select line-up(s) to delete'
+                  : selectedCount === 1
+                  ? 'Delete selected line-up'
+                  : `Delete ${selectedCount} selected line-ups`
+              }
             >
               <Trash2 className="w-3.5 h-3.5" />
-              <span>Delete Selected</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setSelectedIds(new Set())}
-              className="p-1.5 text-indigo-500 hover:text-indigo-700 dark:hover:text-indigo-300 rounded-lg cursor-pointer"
-              title="Clear Selection"
-            >
-              <X className="w-4 h-4" />
+              <span>Delete Line-up{selectedCount > 1 ? `s (${selectedCount})` : ''}</span>
             </button>
           </div>
+
+          {/* Selection Counter & Clear Action */}
+          {selectedCount > 0 && (
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/80 px-2.5 py-1 rounded-full border border-indigo-200/80 dark:border-indigo-800/80">
+                {selectedCount} selected
+              </span>
+              <button
+                type="button"
+                onClick={clearSelection}
+                className="text-[11px] font-semibold text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 underline cursor-pointer"
+              >
+                Clear
+              </button>
+            </div>
+          )}
         </div>
-      )}
+      </div>
 
       {/* Schedules List / Table */}
       <div className="p-6 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs overflow-hidden">
@@ -466,12 +570,12 @@ export const SchedulesView: React.FC<SchedulesViewProps> = ({
                   <th className="py-3 px-3 w-10 text-center">
                     <input
                       type="checkbox"
-                      checked={allVisibleSelected}
+                      checked={isAllSelected}
                       ref={(el) => {
                         if (el) el.indeterminate = isSomeSelected;
                       }}
-                      onChange={toggleSelectAll}
-                      className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                      onChange={() => toggleSelectAll(filteredSchedules)}
+                      className="w-4 h-4 rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
                       title="Select / Unselect All Visible"
                     />
                   </th>
@@ -479,12 +583,11 @@ export const SchedulesView: React.FC<SchedulesViewProps> = ({
                   <th className="py-3 px-4">Service</th>
                   <th className="py-3 px-4 min-w-[240px]">Songs</th>
                   <th className="py-3 px-4">Key Roles</th>
-                  <th className="py-3 px-4 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                {filteredSchedules.map((schedule) => {
-                  const isSelected = selectedIds.has(schedule.id);
+                {filteredSchedules.map((schedule, idx) => {
+                  const selected = isSelected(schedule.id);
                   const leaderAssignments = (schedule.ministryAssignments || []).filter(
                     (m) => (m.role || '').toLowerCase().includes('leader')
                   );
@@ -499,7 +602,7 @@ export const SchedulesView: React.FC<SchedulesViewProps> = ({
                     <tr
                       key={schedule.id}
                       className={`transition-colors ${
-                        isSelected
+                        selected
                           ? 'bg-indigo-50/40 dark:bg-indigo-950/30'
                           : 'hover:bg-slate-50/60 dark:hover:bg-slate-800/40'
                       }`}
@@ -507,9 +610,9 @@ export const SchedulesView: React.FC<SchedulesViewProps> = ({
                       <td className="py-4 px-3 text-center">
                         <input
                           type="checkbox"
-                          checked={isSelected}
-                          onChange={() => toggleSelectRow(schedule.id)}
-                          className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                          checked={selected}
+                          onChange={(e) => toggleSelect(schedule.id, idx, e)}
+                          className="w-4 h-4 rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
                         />
                       </td>
                       <td className="py-4 px-4 whitespace-nowrap">
@@ -638,45 +741,6 @@ export const SchedulesView: React.FC<SchedulesViewProps> = ({
                           <span className="text-slate-400">N/A</span>
                         )}
                       </td>
-                      <td className="py-4 px-4 whitespace-nowrap text-right">
-                        <div className="flex items-center justify-end gap-1">
-                          <button
-                            onClick={() => onExportPDF(schedule)}
-                            className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950/50 rounded-lg transition-colors cursor-pointer"
-                            title="Export PDF"
-                          >
-                            <FileDown className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={() => onExportPNG(schedule)}
-                            className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950/50 rounded-lg transition-colors cursor-pointer"
-                            title="Export PNG"
-                          >
-                            <Image className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={() => onEditSchedule(schedule)}
-                            className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950/50 rounded-lg transition-colors cursor-pointer"
-                            title="Edit Schedule"
-                          >
-                            <Edit3 className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={() => onDuplicateSchedule(schedule)}
-                            className="p-1.5 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/50 rounded-lg transition-colors cursor-pointer"
-                            title="Duplicate Schedule"
-                          >
-                            <Copy className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={() => onDeleteSchedule(schedule.id)}
-                            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/50 rounded-lg transition-colors cursor-pointer"
-                            title="Delete Schedule"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </td>
                     </tr>
                   );
                 })}
@@ -688,3 +752,4 @@ export const SchedulesView: React.FC<SchedulesViewProps> = ({
     </div>
   );
 };
+

@@ -1,21 +1,18 @@
-import React, { useState, useEffect, useRef, useLayoutEffect } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
+import { INTERACTIVE_GUIDE_STEPS, TourStep } from './interactiveGuideSteps';
 import { ActiveTab } from '../types';
 import { StorageService } from '../services/storage';
 import {
-  Sparkles,
   ChevronRight,
   ChevronLeft,
   X,
+  Sparkles,
   MousePointer,
   Compass,
-  ArrowRight,
   CheckCircle2,
+  ArrowRight,
   Download
 } from 'lucide-react';
-import { TourStep, INTERACTIVE_GUIDE_STEPS } from './interactiveGuideSteps';
-
-export type { TourStep };
-export { INTERACTIVE_GUIDE_STEPS };
 
 interface InteractiveTourOverlayProps {
   isOpen: boolean;
@@ -23,7 +20,6 @@ interface InteractiveTourOverlayProps {
   activeTab: ActiveTab;
   setActiveTab: (tab: ActiveTab) => void;
   initialStep?: number;
-  showToast?: (msg: string, type?: 'success' | 'danger' | 'info') => void;
 }
 
 export const InteractiveTourOverlay: React.FC<InteractiveTourOverlayProps> = ({
@@ -38,14 +34,19 @@ export const InteractiveTourOverlay: React.FC<InteractiveTourOverlayProps> = ({
   const [isTopicMenuOpen, setIsTopicMenuOpen] = useState(false);
   const [isSaveCompletedState, setIsSaveCompletedState] = useState(false);
   const [isTransitioning, setIsTransitioning] = useState(false);
-  const currentStepIndexRef = useRef(0);
-  const isAdvancingRef = useRef(false);
-  const popoverRef = useRef<HTMLDivElement>(null);
 
-  // Sync initialStep when changed externally
+  const popoverRef = useRef<HTMLDivElement>(null);
+  const isAdvancingRef = useRef<boolean>(false);
+  const currentStepIndexRef = useRef<number>(0);
+  const currentServiceTypeRef = useRef<string>('Sunday Service');
+
+  // Sync initialStep when guide opens or when initialStep changes
   useEffect(() => {
     if (isOpen) {
       setIsSaveCompletedState(false);
+      setIsTransitioning(false);
+      isAdvancingRef.current = false;
+
       const targetIdx = INTERACTIVE_GUIDE_STEPS.findIndex((s) => s.id === initialStep);
       if (targetIdx !== -1) {
         setCurrentStepIndex(targetIdx);
@@ -189,6 +190,86 @@ export const InteractiveTourOverlay: React.FC<InteractiveTourOverlayProps> = ({
       if (importPlaylistBtn) return '[data-tour="import-playlist-btn"]';
     }
 
+    // QR Code Transfer Steps (200–207)
+    if (s.id >= 200 && s.id <= 207) {
+      if (document.querySelector(s.targetSelector)) {
+        return s.targetSelector;
+      }
+      if (document.querySelector('[data-tour="transfer-modal-container"]')) {
+        return '[data-tour="transfer-modal-container"]';
+      }
+      if (document.querySelector('[data-tour="sidebar-settings-btn"]')) {
+        return '[data-tour="sidebar-settings-btn"]';
+      }
+    }
+
+    // Exporting Lineups Guide (300–303)
+    if (s.id >= 300 && s.id <= 303) {
+      if (document.querySelector(s.targetSelector)) return s.targetSelector;
+      if (s.id === 300 && document.querySelector('[data-tour="save-lineup-btn"]')) return '[data-tour="save-lineup-btn"]';
+      if (s.id === 301 && document.querySelector('[data-tour="export-pdf-btn"]')) return '[data-tour="export-pdf-btn"]';
+      if (s.id === 302 && document.querySelector('[data-tour="export-png-btn"]')) return '[data-tour="export-png-btn"]';
+      if (s.id === 303 && document.querySelector('[data-tour="schedules-view"]')) return '[data-tour="schedules-view"]';
+    }
+
+    // Song Database Guide (310–313)
+    if (s.id >= 310 && s.id <= 313) {
+      if (document.querySelector(s.targetSelector)) return s.targetSelector;
+      if (document.querySelector('[data-tour="songs-view"]')) return '[data-tour="songs-view"]';
+    }
+
+    // YouTube Playlist Import Guide (320–323)
+    if (s.id >= 320 && s.id <= 323) {
+      if (document.querySelector(s.targetSelector)) return s.targetSelector;
+      if (document.querySelector('[data-tour="import-modal-container"]')) return '[data-tour="import-modal-container"]';
+      if (document.querySelector('[data-tour="import-playlist-btn"]')) return '[data-tour="import-playlist-btn"]';
+    }
+
+    // Volunteer Roster & Member Editor Guide (330–334)
+    if (s.id >= 330 && s.id <= 334) {
+      if (document.querySelector(s.targetSelector)) return s.targetSelector;
+      if (document.querySelector('[data-tour="members-view"]')) return '[data-tour="members-view"]';
+    }
+
+    // Worship Team Member Assignment Guide (340–343)
+    if (s.id >= 340 && s.id <= 343) {
+      if (document.querySelector(s.targetSelector)) return s.targetSelector;
+      if (document.querySelector('[data-tour="team-assignments-panel"]')) return '[data-tour="team-assignments-panel"]';
+    }
+
+    // Scheduling & Service Types Guide (350–353)
+    if (s.id >= 350 && s.id <= 353) {
+      if (document.querySelector(s.targetSelector)) return s.targetSelector;
+      if (document.querySelector('[data-tour="new-lineup-modal-container"]')) return '[data-tour="new-lineup-modal-container"]';
+      if (document.querySelector('[data-tour="header-new-lineup-btn"]')) return '[data-tour="header-new-lineup-btn"]';
+    }
+
+    // Song Repetition Guard Guide (360–362)
+    if (s.id >= 360 && s.id <= 362) {
+      if (document.querySelector(s.targetSelector)) return s.targetSelector;
+      if (document.querySelector('[data-tour="rearrangeable-song-list"]')) return '[data-tour="rearrangeable-song-list"]';
+    }
+
+    // Saved Line-ups Archive Guide (370–373)
+    if (s.id >= 370 && s.id <= 373) {
+      if (document.querySelector(s.targetSelector)) return s.targetSelector;
+      if (document.querySelector('[data-tour="schedules-view"]')) return '[data-tour="schedules-view"]';
+    }
+
+    // Backup & Restore Guide (380–382)
+    if (s.id >= 380 && s.id <= 382) {
+      if (document.querySelector(s.targetSelector)) return s.targetSelector;
+      if (document.querySelector('[data-tour="backup-modal-container"]')) return '[data-tour="backup-modal-container"]';
+      if (document.querySelector('[data-tour="sidebar-settings-btn"]')) return '[data-tour="sidebar-settings-btn"]';
+    }
+
+    // Settings & Themes Guide (390–392)
+    if (s.id >= 390 && s.id <= 392) {
+      if (document.querySelector(s.targetSelector)) return s.targetSelector;
+      if (document.querySelector('[data-tour="settings-modal-container"]')) return '[data-tour="settings-modal-container"]';
+      if (document.querySelector('[data-tour="sidebar-settings-btn"]')) return '[data-tour="sidebar-settings-btn"]';
+    }
+
     return s.targetSelector;
   };
 
@@ -240,44 +321,31 @@ export const InteractiveTourOverlay: React.FC<InteractiveTourOverlayProps> = ({
 
     performStepNavigation();
 
-    return () => {
-      isMounted = false;
-      setTargetRect(null);
-    };
-  }, [isOpen, currentStepIndex, step?.id]);
-
-  useLayoutEffect(() => {
-    updateTargetRect();
-    const timer = setTimeout(updateTargetRect, 200);
-    return () => clearTimeout(timer);
-  }, [isOpen, currentStepIndex, activeTab]);
-
-  // Continuous polling and resize/scroll listeners for live target rect updates
-  useEffect(() => {
-    if (!isOpen) return;
-
-    const handleResizeOrScroll = () => {
+    // Re-check target rect on resize and scroll
+    const handleRecalculate = () => {
       updateTargetRect();
     };
 
-    window.addEventListener('resize', handleResizeOrScroll);
-    window.addEventListener('scroll', handleResizeOrScroll, true);
+    window.addEventListener('resize', handleRecalculate);
+    window.addEventListener('scroll', handleRecalculate, true);
 
-    // Polling interval to catch dynamically rendered elements, tab switches, and modal opens
-    const interval = setInterval(updateTargetRect, 150);
+    const pollInterval = setInterval(() => {
+      if (isMounted) {
+        updateTargetRect();
+      }
+    }, 200);
 
     return () => {
-      window.removeEventListener('resize', handleResizeOrScroll);
-      window.removeEventListener('scroll', handleResizeOrScroll, true);
-      clearInterval(interval);
+      isMounted = false;
+      window.removeEventListener('resize', handleRecalculate);
+      window.removeEventListener('scroll', handleRecalculate, true);
+      clearInterval(pollInterval);
     };
-  }, [isOpen, currentStepIndex, activeTab]);
+  }, [isOpen, currentStepIndex, step?.id, step?.targetTab, activeTab]);
 
-  // Specialized State Detector for Step 2 (Service Type) & Step 3 (Service Date)
-  const currentServiceTypeRef = useRef<string>('Sunday Service');
-
+  // Handle service-details-response and service updates
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen || !step) return;
 
     const handleServiceDetailsResponse = (e: Event) => {
       const customEvt = e as CustomEvent<{ serviceType: string; serviceDate: string }>;
@@ -289,38 +357,28 @@ export const InteractiveTourOverlay: React.FC<InteractiveTourOverlayProps> = ({
     const handleServiceTypeSelected = (e: Event) => {
       const customEvt = e as CustomEvent<{ previousType?: string; serviceType: string; serviceDate?: string }>;
       if (!customEvt.detail?.serviceType) return;
-
-      const newType = customEvt.detail.serviceType;
-      currentServiceTypeRef.current = newType;
-      // Do NOT auto-advance step 2. The guide remains on Service Type step until user presses Next Step.
+      currentServiceTypeRef.current = customEvt.detail.serviceType;
     };
 
     const handleServiceDateSelected = (e: Event) => {
       const customEvt = e as CustomEvent<{ previousDate?: string; serviceDate: string; serviceType?: string }>;
       if (!customEvt.detail?.serviceDate) return;
-
       const selectedDate = customEvt.detail.serviceDate;
       const sType = customEvt.detail.serviceType || currentServiceTypeRef.current || 'Sunday Service';
 
-      // Validate date string format (YYYY-MM-DD)
       if (!selectedDate || !/^\d{4}-\d{2}-\d{2}$/.test(selectedDate)) return;
 
-      // Sunday Service validation: selected date must be a Sunday
       if (sType === 'Sunday Service') {
         const [year, month, day] = selectedDate.split('-').map(Number);
         const dt = new Date(Date.UTC(year, month - 1, day));
-        if (dt.getUTCDay() !== 0) {
-          return;
-        }
+        if (dt.getUTCDay() !== 0) return;
       }
-      // Do NOT auto-advance step 3. The guide remains on Service Date step until user presses Next Step.
     };
 
     window.addEventListener('service-details-response', handleServiceDetailsResponse);
     window.addEventListener('service-type-user-selected', handleServiceTypeSelected);
     window.addEventListener('service-date-user-selected', handleServiceDateSelected);
 
-    // Request initial service details from SchedulerView
     window.dispatchEvent(new CustomEvent('request-service-details'));
 
     return () => {
@@ -338,7 +396,6 @@ export const InteractiveTourOverlay: React.FC<InteractiveTourOverlayProps> = ({
   useEffect(() => {
     if (!isOpen || !step) return;
 
-    // Helper to advance to Step 5 (Arrange Songs)
     const advanceToStep5 = () => {
       if (isAdvancingRef.current) return;
       isAdvancingRef.current = true;
@@ -350,7 +407,6 @@ export const InteractiveTourOverlay: React.FC<InteractiveTourOverlayProps> = ({
       }, 50);
     };
 
-    // Periodically check if import modal closed while pending step 5
     const modalCheckInterval = setInterval(() => {
       if (step4PendingModalCloseRef.current) {
         const modalContainer = document.querySelector('[data-tour="import-modal-container"]');
@@ -361,7 +417,6 @@ export const InteractiveTourOverlay: React.FC<InteractiveTourOverlayProps> = ({
       }
     }, 150);
 
-    // 1. Direct handler for playlist import success event
     const handlePlaylistImportSuccess = (e: Event) => {
       if (step.id === 4 || step.id === 41 || step.id === 42) {
         const customEvt = e as CustomEvent<{ praiseSongs?: string[]; worshipSongs?: string[] }>;
@@ -382,14 +437,12 @@ export const InteractiveTourOverlay: React.FC<InteractiveTourOverlayProps> = ({
       }
     };
 
-    // 2. Direct handler for blank lineup created event
     const handleBlankLineupCreated = () => {
       if (step.id === 4 || step.id === 41 || step.id === 42) {
         advanceToStep5();
       }
     };
 
-    // 3. Helper to evaluate if songs were added or imported via lineup-songs-changed
     const evaluateStep4Songs = (praiseSongs: string[], worshipSongs: string[]) => {
       if (isAdvancingRef.current) return;
       if (step.id !== 4 && step.id !== 41) return;
@@ -398,7 +451,6 @@ export const InteractiveTourOverlay: React.FC<InteractiveTourOverlayProps> = ({
         .map((s) => (s || '').trim().toLowerCase())
         .filter(Boolean);
 
-      // Initialize baseline on first event
       if (!step4InitializedRef.current || step4InitialSongsRef.current === null) {
         step4InitialSongsRef.current = new Set(currentNonEmpty);
         step4InitializedRef.current = true;
@@ -411,13 +463,10 @@ export const InteractiveTourOverlay: React.FC<InteractiveTourOverlayProps> = ({
       let isSuccess = false;
 
       if (initialSize === 0) {
-        // Lineup was empty initially: successfully completed if at least 1 non-empty song exists now
         if (currentNonEmpty.length > 0) {
           isSuccess = true;
         }
       } else {
-        // Lineup had existing songs initially:
-        // Complete if song count increased OR a new non-empty song title is present that wasn't in initial set
         if (currentNonEmpty.length > initialSize) {
           isSuccess = true;
         } else if (currentNonEmpty.some((song) => !initialSet.has(song))) {
@@ -430,7 +479,6 @@ export const InteractiveTourOverlay: React.FC<InteractiveTourOverlayProps> = ({
       }
     };
 
-    // Handler for custom lineup-songs-changed event
     const handleLineupSongsChanged = (e: Event) => {
       const customEvt = e as CustomEvent<{ praiseSongs: string[]; worshipSongs: string[] }>;
       if (customEvt.detail) {
@@ -439,52 +487,38 @@ export const InteractiveTourOverlay: React.FC<InteractiveTourOverlayProps> = ({
       }
     };
 
-    // Handlers for Save and Export events
-    const handleLineupSavedSuccess = () => {
-      if (step.id === 7) {
-        if (isAdvancingRef.current) return;
-        isAdvancingRef.current = true;
-        setTimeout(() => {
-          const exportIndex = INTERACTIVE_GUIDE_STEPS.findIndex((s) => s.id === 8);
-          const nextIndex = exportIndex !== -1 ? exportIndex : currentStepIndexRef.current + 1;
-          goToStep(nextIndex);
-        }, 50);
-      }
-    };
-
-    const handleLineupExportedSuccess = () => {
-      if (step.id === 8) {
-        if (isAdvancingRef.current) return;
-        isAdvancingRef.current = true;
-        setTimeout(() => {
-          setIsSaveCompletedState(true);
-          setTimeout(() => {
-            isAdvancingRef.current = false;
-          }, 300);
-        }, 50);
-      }
-    };
-
     window.addEventListener('playlist-import-success', handlePlaylistImportSuccess);
     window.addEventListener('blank-lineup-created', handleBlankLineupCreated);
     window.addEventListener('lineup-songs-changed', handleLineupSongsChanged);
-    window.addEventListener('lineup-saved-success', handleLineupSavedSuccess);
-    window.addEventListener('lineup-exported-success', handleLineupExportedSuccess);
 
-    if (step.id === 4 || step.id === 41 || step.id === 42) {
-      // Request current lineup state from SchedulerView
-      window.dispatchEvent(new CustomEvent('request-lineup-songs'));
-    }
+    window.dispatchEvent(new CustomEvent('request-lineup-songs'));
 
     return () => {
       clearInterval(modalCheckInterval);
       window.removeEventListener('playlist-import-success', handlePlaylistImportSuccess);
       window.removeEventListener('blank-lineup-created', handleBlankLineupCreated);
       window.removeEventListener('lineup-songs-changed', handleLineupSongsChanged);
-      window.removeEventListener('lineup-saved-success', handleLineupSavedSuccess);
-      window.removeEventListener('lineup-exported-success', handleLineupExportedSuccess);
     };
-  }, [isOpen, currentStepIndex, step]);
+  }, [isOpen, step, currentStepIndex]);
+
+  // Listen for lineup-save-success to advance Step 7 -> Step 8
+  useEffect(() => {
+    if (!isOpen || !step) return;
+
+    const handleSaveSuccess = () => {
+      if (step.id === 7) {
+        const idx8 = INTERACTIVE_GUIDE_STEPS.findIndex((s) => s.id === 8);
+        if (idx8 !== -1) {
+          goToStep(idx8);
+        }
+      }
+    };
+
+    window.addEventListener('lineup-save-success', handleSaveSuccess);
+    return () => {
+      window.removeEventListener('lineup-save-success', handleSaveSuccess);
+    };
+  }, [isOpen, step]);
 
   // Listen to user interaction on target element dynamically (non-blocking capture phase)
   useEffect(() => {
@@ -499,7 +533,6 @@ export const InteractiveTourOverlay: React.FC<InteractiveTourOverlayProps> = ({
       const eventTarget = e.target as Node | null;
       if (!eventTarget) return;
 
-      // Check if event occurred on or inside targetEl
       let isTargetMatch = Boolean(targetEl && (targetEl === eventTarget || targetEl.contains(eventTarget)));
 
       if (step.id === 110) {
@@ -522,7 +555,6 @@ export const InteractiveTourOverlay: React.FC<InteractiveTourOverlayProps> = ({
 
       if (!isTargetMatch) return;
 
-      // Validate action type
       if (step.actionType === 'click') {
         if (e.type !== 'click' && e.type !== 'pointerup') return;
       } else if (step.actionType === 'input') {
@@ -532,13 +564,11 @@ export const InteractiveTourOverlay: React.FC<InteractiveTourOverlayProps> = ({
           if (inputEl.type === 'checkbox' || inputEl.type === 'radio') {
             if (!(inputEl as HTMLInputElement).checked) return;
           } else {
-            // Text input: must have non-empty value
             if (!inputEl.value || inputEl.value.trim().length === 0) return;
           }
         }
       }
 
-      // Valid action detected: silently auto-advance to the next step
       isAdvancingRef.current = true;
 
       setTimeout(() => {
@@ -618,7 +648,7 @@ export const InteractiveTourOverlay: React.FC<InteractiveTourOverlayProps> = ({
     const isElementAllowed = (element: Node | null): boolean => {
       if (!element) return false;
 
-      // 1. Always allow interactions with guide popover controls (Next, Back, Skip, Close, Don't show again, Topics, etc.)
+      // 1. Always allow interactions with guide popover controls
       if (popoverRef.current && popoverRef.current.contains(element)) {
         return true;
       }
@@ -650,7 +680,7 @@ export const InteractiveTourOverlay: React.FC<InteractiveTourOverlayProps> = ({
         }
       }
 
-      // 3. Allow interactions inside active modals (New Lineup modal, Import Playlist modal, Song Picker, Confirmation modal, etc.)
+      // 3. Allow interactions inside active modals (New Lineup, Import Playlist, Transfer Data, Backup/Restore, Settings, Dialogs)
       const newLineupModal = document.querySelector('[data-tour="new-lineup-modal-container"]');
       if (newLineupModal && newLineupModal.contains(element)) {
         return true;
@@ -658,6 +688,21 @@ export const InteractiveTourOverlay: React.FC<InteractiveTourOverlayProps> = ({
 
       const importModal = document.querySelector('[data-tour="import-modal-container"]');
       if (importModal && importModal.contains(element)) {
+        return true;
+      }
+
+      const transferModal = document.querySelector('[data-tour="transfer-modal-container"]');
+      if (transferModal && transferModal.contains(element)) {
+        return true;
+      }
+
+      const backupModal = document.querySelector('[data-tour="backup-modal-container"]');
+      if (backupModal && backupModal.contains(element)) {
+        return true;
+      }
+
+      const settingsModal = document.querySelector('[data-tour="settings-modal-container"]');
+      if (settingsModal && settingsModal.contains(element)) {
         return true;
       }
 
@@ -676,9 +721,7 @@ export const InteractiveTourOverlay: React.FC<InteractiveTourOverlayProps> = ({
         }
       }
 
-      // 5. Fallback for missing/unmounted target elements:
-      // If the step has a targetSelector, but the target element is NOT present in the DOM
-      // (or is hidden/unmounted), do NOT lock out the entire application.
+      // 5. Fallback for missing/unmounted target elements: do NOT lock out the entire app
       if (targetSelector && !targetEl) {
         return true;
       }
@@ -702,7 +745,6 @@ export const InteractiveTourOverlay: React.FC<InteractiveTourOverlayProps> = ({
         e.stopPropagation();
         e.stopImmediatePropagation();
 
-        // Keep focus trapped inside guide popover or active target
         if (popoverRef.current) {
           const focusable = popoverRef.current.querySelector<HTMLElement>(
             'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
@@ -752,34 +794,56 @@ export const InteractiveTourOverlay: React.FC<InteractiveTourOverlayProps> = ({
     };
   }, [isOpen, step, currentStepIndex]);
 
-  // REMOVED: Auto-open YouTube Playlist Import Modal when entering Step 4B
-  // The Interactive Guide is strictly a tutorial/demo layer and must NEVER programmatically click real buttons or open real modals.
-
   if (!isOpen) return null;
+
+  // Step helper to determine if step is first or last in its section
+  const isFirstStepInTopic = (stepId: number) => {
+    if (stepId === 1) return true;
+    if (
+      stepId === 200 ||
+      stepId === 300 ||
+      stepId === 310 ||
+      stepId === 320 ||
+      stepId === 330 ||
+      stepId === 340 ||
+      stepId === 350 ||
+      stepId === 360 ||
+      stepId === 370 ||
+      stepId === 380 ||
+      stepId === 390
+    )
+      return true;
+    if (stepId >= 10 && stepId < 200) return true;
+    return false;
+  };
+
+  const isLastStepInTopic = (stepId: number) => {
+    if (stepId === 8) return true;
+    if (
+      stepId === 207 ||
+      stepId === 303 ||
+      stepId === 313 ||
+      stepId === 323 ||
+      stepId === 334 ||
+      stepId === 343 ||
+      stepId === 353 ||
+      stepId === 362 ||
+      stepId === 373 ||
+      stepId === 382 ||
+      stepId === 392
+    )
+      return true;
+    if (stepId >= 10 && stepId < 200) return true;
+    return false;
+  };
 
   // Atomic Step Transition Helper: Clean up previous step UI & state before advancing/navigating
   const goToStep = (nextIndex: number) => {
     const nextStep = INTERACTIVE_GUIDE_STEPS[nextIndex];
-    // If navigating away to a step that is not Step 4B (id 42), cleanly close the import playlist modal if open
-    if (!nextStep || nextStep.id !== 42) {
+    if (nextStep && nextStep.id !== 42 && nextStep.id !== 320 && nextStep.id !== 321 && nextStep.id !== 322 && nextStep.id !== 323) {
       window.dispatchEvent(new CustomEvent('close-import-playlist-modal'));
     }
 
-    // 1. Immediately clear highlight rect & set transitioning state
-    setTargetRect(null);
-    setIsTransitioning(true);
-    setIsTopicMenuOpen(false);
-
-    // 2. Reset step tracking refs
-    isAdvancingRef.current = false;
-    step4InitializedRef.current = false;
-    step4InitialSongsRef.current = null;
-    step4PendingModalCloseRef.current = false;
-
-    // 3. Reset completion UI state
-    setIsSaveCompletedState(false);
-
-    // 4. Update step index
     if (nextIndex >= 0 && nextIndex < INTERACTIVE_GUIDE_STEPS.length) {
       currentStepIndexRef.current = nextIndex;
       setCurrentStepIndex(nextIndex);
@@ -788,7 +852,6 @@ export const InteractiveTourOverlay: React.FC<InteractiveTourOverlayProps> = ({
 
   // Helper to cleanly clean up all temporary guide state and close the overlay
   const cleanupAndCloseGuide = (action: () => void) => {
-    // Cleanly close the YouTube Playlist Import Modal on guide exit/completion/skip
     window.dispatchEvent(new CustomEvent('close-import-playlist-modal'));
 
     setTargetRect(null);
@@ -806,7 +869,8 @@ export const InteractiveTourOverlay: React.FC<InteractiveTourOverlayProps> = ({
 
   const getNextButtonLabel = () => {
     if (step.id === 8) return 'Finish Guide';
-    if (step.id >= 10) return 'Finish Topic';
+    if (step.id === 207) return 'Finish Advanced Guide';
+    if (isLastStepInTopic(step.id)) return 'Finish Topic';
     return 'Next Step';
   };
 
@@ -872,8 +936,14 @@ export const InteractiveTourOverlay: React.FC<InteractiveTourOverlayProps> = ({
         goToStep(idx8);
         return;
       }
-    } else if (step.id === 8 || step.id >= 10) {
+    } else if (isLastStepInTopic(step.id)) {
       handleComplete();
+      return;
+    }
+
+    const nextStepIdx = INTERACTIVE_GUIDE_STEPS.findIndex((s) => s.id === step.id + 1);
+    if (nextStepIdx !== -1) {
+      goToStep(nextStepIdx);
       return;
     }
 
@@ -885,6 +955,10 @@ export const InteractiveTourOverlay: React.FC<InteractiveTourOverlayProps> = ({
   };
 
   const handlePrev = () => {
+    if (isFirstStepInTopic(step.id)) {
+      return;
+    }
+
     if (step.id === 110) {
       const idx1 = INTERACTIVE_GUIDE_STEPS.findIndex((s) => s.id === 1);
       if (idx1 !== -1) {
@@ -939,6 +1013,12 @@ export const InteractiveTourOverlay: React.FC<InteractiveTourOverlayProps> = ({
       }
     }
 
+    const prevStepIdx = INTERACTIVE_GUIDE_STEPS.findIndex((s) => s.id === step.id - 1);
+    if (prevStepIdx !== -1) {
+      goToStep(prevStepIdx);
+      return;
+    }
+
     if (currentStepIndex > 0) {
       goToStep(currentStepIndex - 1);
     }
@@ -966,8 +1046,8 @@ export const InteractiveTourOverlay: React.FC<InteractiveTourOverlayProps> = ({
   };
 
   const totalSteps = INTERACTIVE_GUIDE_STEPS.length;
-  const isFirstStep = currentStepIndex === 0;
-  const isLastStep = currentStepIndex === totalSteps - 1;
+  const isFirstStep = isFirstStepInTopic(step.id);
+  const isLastStep = isLastStepInTopic(step.id);
 
   const getStepBadgeText = () => {
     if (step.id === 110) return 'Step 1B of 7';
@@ -975,6 +1055,17 @@ export const InteractiveTourOverlay: React.FC<InteractiveTourOverlayProps> = ({
     if (step.id === 41) return 'Step 4A of 7';
     if (step.id === 42) return 'Step 4B of 7';
     if (step.id <= 7) return `Step ${step.id} of 7`;
+    if (step.id >= 200 && step.id <= 207) return `Advanced Guide • Step ${step.id - 199} of 8`;
+    if (step.id >= 300 && step.id <= 303) return `Advanced Guide • Step ${step.id - 299} of 4`;
+    if (step.id >= 310 && step.id <= 313) return `Advanced Guide • Step ${step.id - 309} of 4`;
+    if (step.id >= 320 && step.id <= 323) return `Advanced Guide • Step ${step.id - 319} of 4`;
+    if (step.id >= 330 && step.id <= 334) return `Advanced Guide • Step ${step.id - 329} of 5`;
+    if (step.id >= 340 && step.id <= 343) return `Advanced Guide • Step ${step.id - 339} of 4`;
+    if (step.id >= 350 && step.id <= 353) return `Advanced Guide • Step ${step.id - 349} of 4`;
+    if (step.id >= 360 && step.id <= 362) return `Advanced Guide • Step ${step.id - 359} of 3`;
+    if (step.id >= 370 && step.id <= 373) return `Advanced Guide • Step ${step.id - 369} of 4`;
+    if (step.id >= 380 && step.id <= 382) return `Advanced Guide • Step ${step.id - 379} of 3`;
+    if (step.id >= 390 && step.id <= 392) return `Advanced Guide • Step ${step.id - 389} of 3`;
     return 'Help Topic';
   };
 
@@ -986,6 +1077,17 @@ export const InteractiveTourOverlay: React.FC<InteractiveTourOverlayProps> = ({
     if (step.id === 35) return (3.5 / 7) * 100;
     if (step.id === 41 || step.id === 42) return (4 / 7) * 100;
     if (step.id <= 7) return (step.id / 7) * 100;
+    if (step.id >= 200 && step.id <= 207) return ((step.id - 199) / 8) * 100;
+    if (step.id >= 300 && step.id <= 303) return ((step.id - 299) / 4) * 100;
+    if (step.id >= 310 && step.id <= 313) return ((step.id - 309) / 4) * 100;
+    if (step.id >= 320 && step.id <= 323) return ((step.id - 319) / 4) * 100;
+    if (step.id >= 330 && step.id <= 334) return ((step.id - 329) / 5) * 100;
+    if (step.id >= 340 && step.id <= 343) return ((step.id - 339) / 4) * 100;
+    if (step.id >= 350 && step.id <= 353) return ((step.id - 349) / 4) * 100;
+    if (step.id >= 360 && step.id <= 362) return ((step.id - 359) / 3) * 100;
+    if (step.id >= 370 && step.id <= 373) return ((step.id - 369) / 4) * 100;
+    if (step.id >= 380 && step.id <= 382) return ((step.id - 379) / 3) * 100;
+    if (step.id >= 390 && step.id <= 392) return ((step.id - 389) / 3) * 100;
     return 100;
   };
 
@@ -1078,7 +1180,11 @@ export const InteractiveTourOverlay: React.FC<InteractiveTourOverlayProps> = ({
       };
     }
 
-    if (isImportModalOpen || modalEl) {
+    const isTransferModalOpen = Boolean(typeof document !== 'undefined' && document.querySelector('[data-tour="transfer-modal-container"]'));
+    const isBackupModalOpen = Boolean(typeof document !== 'undefined' && document.querySelector('[data-tour="backup-modal-container"]'));
+    const isSettingsModalOpen = Boolean(typeof document !== 'undefined' && document.querySelector('[data-tour="settings-modal-container"]'));
+
+    if (isImportModalOpen || modalEl || isTransferModalOpen || isBackupModalOpen || isSettingsModalOpen || (step && step.id >= 200 && step.id <= 207)) {
       return {
         ...baseStyle,
         bottom: '24px',
@@ -1182,7 +1288,6 @@ export const InteractiveTourOverlay: React.FC<InteractiveTourOverlayProps> = ({
       }
     }
 
-    // Fallback: Safe corner positioning
     const pLeft = Math.max(sidebarWidth + 16, vw - PW - 16);
     const pTop = Math.max(headerHeight + 16, vh - PH - 16);
 
@@ -1304,28 +1409,30 @@ export const InteractiveTourOverlay: React.FC<InteractiveTourOverlayProps> = ({
 
         {/* Topic Selector Dropdown Overlay */}
         {isTopicMenuOpen && (
-          <div className="p-3 bg-slate-900 text-white max-h-56 overflow-y-auto space-y-1 text-xs border-b border-slate-800 animate-in slide-in-from-top-2">
+          <div className="p-3 bg-slate-900 text-white max-h-64 overflow-y-auto space-y-1 text-xs border-b border-slate-800 animate-in slide-in-from-top-2">
             <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 pb-1">
               Select Guide / Help Topic
             </p>
             {[
               { label: 'Create a Line-up (Basic Guide)', id: 1 },
-              { label: 'Help: Song Database', id: 11 },
-              { label: 'Help: Import YouTube Playlist', id: 42 },
-              { label: 'Help: Saved Line-ups Archive', id: 10 },
-              { label: 'Help: Member Roster & Editor', id: 12 },
-              { label: 'Help: Member Assignment', id: 6 },
-              { label: 'Help: Export PDF / PNG', id: 8 },
-              { label: 'Help: Service Types & Dates', id: 2 },
-              { label: 'Help: Song Repetition Detection', id: 13 },
-              { label: 'Help: Application Settings', id: 14 },
-              { label: 'Help: Backup & Restore Data', id: 15 }
+              { label: 'PC → Phone QR Data Transfer', id: 200 },
+              { label: 'Exporting Lineups (PDF & PNG)', id: 300 },
+              { label: 'Song Database & Catalog', id: 310 },
+              { label: 'Import YouTube Playlist', id: 320 },
+              { label: 'Volunteer Roster & Member Editor', id: 330 },
+              { label: 'Worship Team Member Assignment', id: 340 },
+              { label: 'Scheduling & Service Types', id: 350 },
+              { label: 'Song Repetition Guard & Variety', id: 360 },
+              { label: 'Saved Line-ups Archive & History', id: 370 },
+              { label: 'Backup & Restore Data', id: 380 },
+              { label: 'Application Settings & Themes', id: 390 }
             ].map((topic) => (
               <button
                 key={topic.id}
                 onClick={() => {
                   const targetIdx = INTERACTIVE_GUIDE_STEPS.findIndex((s) => s.id === topic.id);
                   if (targetIdx !== -1) {
+                    setIsTopicMenuOpen(false);
                     goToStep(targetIdx);
                   }
                 }}
@@ -1587,7 +1694,6 @@ export const InteractiveTourOverlay: React.FC<InteractiveTourOverlayProps> = ({
               Exit Guide
             </button>
 
-            {/* Show Next Step button for all active guide steps when not in completion card state */}
             {!isSaveCompletedState && (
               <button
                 type="button"

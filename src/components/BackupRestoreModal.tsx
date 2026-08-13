@@ -131,6 +131,7 @@ export const BackupRestoreModal: React.FC<BackupRestoreModalProps> = ({
   return (
     <div className="fixed inset-0 z-[999] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200">
       <div
+        data-tour="backup-modal-container"
         className="w-full max-w-md bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800 overflow-hidden transform animate-in zoom-in-95 duration-200"
         onClick={(e) => e.stopPropagation()}
       >

@@ -2,6 +2,8 @@ import React, { useMemo } from 'react';
 import { Member, Schedule, ActiveTab, formatAssignmentMemberNames, ServiceType } from '../types';
 import { formatDateDisplayManila } from '../utils/dateUtils';
 import { isScheduleEmpty } from '../utils/scheduleUtils';
+import { calculateSongAnalytics } from '../utils/songAnalyticsUtils';
+import { MemberFavoriteSongsSection } from './MemberFavoriteSongsSection';
 import {
   Users,
   CalendarCheck,
@@ -75,22 +77,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     return Array.from(set);
   }, [schedules]);
 
-  // Song usage statistics
-  const songStats: Record<string, number> = {};
-  schedules.forEach((s) => {
-    [...s.praiseSongs, ...s.worshipSongs].forEach((song) => {
-      const trimmed = song.trim();
-      if (trimmed) {
-        songStats[trimmed] = (songStats[trimmed] || 0) + 1;
-      }
-    });
-  });
+  // Calculate comprehensive song and song leader analytics
+  const songAnalytics = useMemo(() => {
+    return calculateSongAnalytics(schedules, members);
+  }, [schedules, members]);
 
-  const topSongs = Object.entries(songStats)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 6);
-
-  const totalUniqueSongs = Object.keys(songStats).length;
+  const topSongs = songAnalytics.mostUsedSongs.slice(0, 6);
+  const totalUniqueSongs = songAnalytics.totalUniqueSongs;
 
   // Recent Saved Lineups (only lineups with songs)
   const recentSavedSchedules = useMemo(() => {
@@ -612,19 +605,41 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               </p>
             ) : (
               <div className="divide-y divide-slate-100 dark:divide-slate-800">
-                {topSongs.map(([song, count], index) => (
-                  <div key={song} className="py-2.5 first:pt-0 last:pb-0 flex items-center justify-between text-xs">
-                    <div className="flex items-center gap-2.5 truncate pr-2">
-                      <span className="w-5 h-5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 font-bold flex items-center justify-center shrink-0 text-[10px]">
-                        {index + 1}
-                      </span>
-                      <span className="font-semibold text-slate-700 dark:text-slate-200 truncate">
-                        {song}
+                {topSongs.map((item, index) => (
+                  <div key={item.title} className="py-3 first:pt-0 last:pb-0 space-y-1.5 text-xs">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2.5 min-w-0 pr-1">
+                        <span className="w-5 h-5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 font-bold flex items-center justify-center shrink-0 text-[10px]">
+                          {index + 1}
+                        </span>
+                        <span className="font-semibold text-slate-800 dark:text-slate-100 truncate">
+                          {item.title}
+                        </span>
+                      </div>
+                      <span className="px-2 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/80 text-indigo-700 dark:text-indigo-300 font-bold shrink-0 text-[11px] border border-indigo-200/60 dark:border-indigo-800/60">
+                        {item.totalCount}x
                       </span>
                     </div>
-                    <span className="px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-bold shrink-0 text-[11px]">
-                      {count}x
-                    </span>
+
+                    {/* Last sung by & Most used by metadata */}
+                    <div className="pl-7 space-y-0.5 text-[11px] text-slate-500 dark:text-slate-400">
+                      <div className="flex items-baseline gap-1.5 truncate">
+                        <span className="text-slate-400 dark:text-slate-500 font-medium shrink-0">
+                          Last sung by:
+                        </span>
+                        <span className="font-semibold text-slate-700 dark:text-slate-300 truncate">
+                          {item.lastSungBy}
+                        </span>
+                      </div>
+                      <div className="flex items-baseline gap-1.5 truncate">
+                        <span className="text-slate-400 dark:text-slate-500 font-medium shrink-0">
+                          Most used by:
+                        </span>
+                        <span className="font-semibold text-slate-700 dark:text-slate-300 truncate">
+                          {item.mostUsedBy}
+                        </span>
+                      </div>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -632,6 +647,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Member's Favorite Songs Section */}
+      <MemberFavoriteSongsSection
+        members={members}
+        schedules={schedules}
+        setActiveTab={setActiveTab}
+      />
     </div>
   );
 };

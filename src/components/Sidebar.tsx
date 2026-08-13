@@ -7,10 +7,7 @@ import {
   CalendarDays,
   Users,
   Music,
-  Moon,
-  Sun,
   X,
-  Database,
   Settings,
   HelpCircle
 } from 'lucide-react';
@@ -23,6 +20,7 @@ interface SidebarProps {
   isOpen: boolean;
   setIsOpen: (open: boolean) => void;
   onOpenBackupRestore: () => void;
+  onOpenTransferData?: () => void;
   onOpenSettings: () => void;
   onOpenHelp: () => void;
 }
@@ -35,6 +33,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   isOpen,
   setIsOpen,
   onOpenBackupRestore,
+  onOpenTransferData,
   onOpenSettings,
   onOpenHelp
 }) => {
@@ -111,11 +110,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <div className="p-4 border-t border-slate-100 dark:border-slate-800 space-y-2">
           <button
             type="button"
+            data-tour="sidebar-help-btn"
             onClick={() => {
               onOpenHelp();
               setIsOpen(false);
             }}
-            className="w-full flex items-center justify-between px-3 py-2 rounded-lg bg-indigo-50/80 hover:bg-indigo-100 dark:bg-indigo-950/60 dark:hover:bg-indigo-900/60 border border-indigo-100 dark:border-indigo-900 text-xs font-semibold text-indigo-700 dark:text-indigo-300 transition-colors cursor-pointer"
+            className="w-full flex items-center justify-between px-3 py-2.5 rounded-lg bg-indigo-50/80 hover:bg-indigo-100 dark:bg-indigo-950/60 dark:hover:bg-indigo-900/60 border border-indigo-100 dark:border-indigo-900 text-xs font-semibold text-indigo-700 dark:text-indigo-300 transition-colors cursor-pointer"
           >
             <div className="flex items-center gap-2">
               <HelpCircle className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
@@ -125,56 +125,18 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
           <button
             type="button"
+            data-tour="sidebar-settings-btn"
             onClick={() => {
               onOpenSettings();
               setIsOpen(false);
             }}
-            className="w-full flex items-center justify-between px-3 py-2 rounded-lg bg-slate-50 hover:bg-slate-100 dark:bg-slate-800/50 dark:hover:bg-slate-800 border border-slate-100 dark:border-slate-800 text-xs font-semibold text-slate-700 dark:text-slate-300 transition-colors cursor-pointer"
+            className="w-full flex items-center justify-between px-3 py-2.5 rounded-lg bg-slate-50 hover:bg-slate-100 dark:bg-slate-800/50 dark:hover:bg-slate-800 border border-slate-100 dark:border-slate-800 text-xs font-semibold text-slate-700 dark:text-slate-300 transition-colors cursor-pointer"
           >
             <div className="flex items-center gap-2">
               <Settings className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
-              <span>Preferences & Settings</span>
+              <span>Settings</span>
             </div>
           </button>
-
-          <button
-            type="button"
-            onClick={() => {
-              onOpenBackupRestore();
-              setIsOpen(false);
-            }}
-            className="w-full flex items-center justify-between px-3 py-2 rounded-lg bg-slate-50 hover:bg-slate-100 dark:bg-slate-800/50 dark:hover:bg-slate-800 border border-slate-100 dark:border-slate-800 text-xs font-semibold text-slate-700 dark:text-slate-300 transition-colors cursor-pointer"
-          >
-            <div className="flex items-center gap-2">
-              <Database className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
-              <span>Backup & Restore Data</span>
-            </div>
-          </button>
-
-          <div className="flex items-center justify-between px-3 py-2 rounded-lg bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800">
-            <div className="flex items-center gap-2 text-xs font-semibold text-slate-600 dark:text-slate-300">
-              {isDarkMode ? <Moon className="w-4 h-4 text-indigo-400" /> : <Sun className="w-4 h-4 text-amber-500" />}
-              <span>{isDarkMode ? 'Dark Mode' : 'Light Mode'}</span>
-            </div>
-            <button
-              onClick={() => setIsDarkMode(!isDarkMode)}
-              className={`relative inline-flex h-5 w-10 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                isDarkMode ? 'bg-indigo-600' : 'bg-slate-300'
-              }`}
-              role="switch"
-              aria-checked={isDarkMode}
-            >
-              <span
-                className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${
-                  isDarkMode ? 'translate-x-5' : 'translate-x-0'
-                }`}
-              />
-            </button>
-          </div>
-
-          <div className="text-[11px] text-center text-slate-400 dark:text-slate-500 font-medium">
-            Word for the World • Santa Cruz
-          </div>
         </div>
       </aside>
     </>

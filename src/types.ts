@@ -138,6 +138,34 @@ export type ActiveTab = 'dashboard' | 'scheduler' | 'schedules' | 'members' | 's
 
 export type SongCategory = 'praise' | 'worship' | 'both';
 
+export type SongRelationshipType =
+  | 'ORIGINAL'
+  | 'COVER'
+  | 'LIVE_VERSION'
+  | 'ACOUSTIC_VERSION'
+  | 'ALTERNATE_VERSION'
+  | 'REMAKE'
+  | 'VERSION'
+  | 'UNKNOWN';
+
+export interface SongVersionRef {
+  songId: string;
+  relationshipType: SongRelationshipType;
+  notes?: string;
+  confidence?: 'high' | 'medium' | 'low';
+}
+
+export interface SongFamily {
+  id: string;
+  name: string; // The canonical name for the song family (e.g., "Tribes", "Sukdulang Biyaya")
+  versionIds: string[]; // List of member song IDs
+  versions?: SongVersionRef[];
+  originalSongId?: string; // ID of the confirmed original version
+  notes?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 export interface ServiceUsageHistory {
   date: string;
   serviceType: string;
@@ -176,6 +204,13 @@ export interface Song {
   category: SongCategory;
   labels?: string[];
   themes?: string[];
+  // Song Relationship / Song Family fields
+  songFamilyId?: string;
+  relationshipType?: SongRelationshipType;
+  lyrics?: string;
+  songwriters?: string;
+  composers?: string[];
+  originalArtist?: string;
 }
 
 export interface ToastMessage {

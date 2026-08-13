@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Song, SongCategory } from '../types';
+import { Song, SongCategory, SongFamily, SongRelationshipType } from '../types';
 import { SongService, DuplicateMatch } from '../services/songService';
+import { SongFamilyService } from '../services/songFamilyService';
 import { fetchMultiSourceMetadata } from '../services/musicMetadataService';
 import { getManilaTodayString } from '../utils/dateUtils';
 import { COMMON_THEMES } from '../utils/recommendationUtils';
@@ -18,7 +19,9 @@ import {
   FileText,
   AlertTriangle,
   Globe,
-  KeyRound
+  KeyRound,
+  Layers,
+  BookOpen
 } from 'lucide-react';
 
 interface SongFormModalProps {
@@ -70,6 +73,14 @@ export const SongFormModal: React.FC<SongFormModalProps> = ({
   const [themes, setThemes] = useState<string[]>([]);
   const [customThemeInput, setCustomThemeInput] = useState('');
 
+  // Song Family & Composition Metadata
+  const [songFamilyId, setSongFamilyId] = useState<string>('');
+  const [relationshipType, setRelationshipType] = useState<SongRelationshipType>('ORIGINAL');
+  const [songwriters, setSongwriters] = useState('');
+  const [originalArtist, setOriginalArtist] = useState('');
+  const [lyrics, setLyrics] = useState('');
+  const [allFamilies, setAllFamilies] = useState<SongFamily[]>([]);
+
   // Auto-import metadata state
   const [isFetchingMeta, setIsFetchingMeta] = useState(false);
   const [metaImportError, setMetaImportError] = useState('');
@@ -80,6 +91,8 @@ export const SongFormModal: React.FC<SongFormModalProps> = ({
   const [pendingSongData, setPendingSongData] = useState<Partial<Song> | null>(null);
 
   useEffect(() => {
+    SongFamilyService.getSongFamilies().then(setAllFamilies);
+
     if (songToEdit) {
       setTitle(songToEdit.title || '');
       setArtist(songToEdit.artist || '');
@@ -106,6 +119,11 @@ export const SongFormModal: React.FC<SongFormModalProps> = ({
       setGeniusUrl(songToEdit.geniusUrl || '');
       setNotes(songToEdit.notes || '');
       setThemes(songToEdit.themes || songToEdit.labels || []);
+      setSongFamilyId(songToEdit.songFamilyId || '');
+      setRelationshipType(songToEdit.relationshipType || 'ORIGINAL');
+      setSongwriters(songToEdit.songwriters || (songToEdit.composers ? songToEdit.composers.join(', ') : ''));
+      setOriginalArtist(songToEdit.originalArtist || '');
+      setLyrics(songToEdit.lyrics || '');
       setFetchInput(songToEdit.youtubeUrl || `${songToEdit.title} ${songToEdit.artist}`.trim());
     } else {
       setTitle('');
@@ -132,6 +150,11 @@ export const SongFormModal: React.FC<SongFormModalProps> = ({
       setGeniusUrl('');
       setNotes('');
       setThemes([]);
+      setSongFamilyId('');
+      setRelationshipType('ORIGINAL');
+      setSongwriters('');
+      setOriginalArtist('');
+      setLyrics('');
       setFetchInput('');
     }
     setMetaImportError('');
@@ -214,6 +237,11 @@ export const SongFormModal: React.FC<SongFormModalProps> = ({
       notes: notes.trim(),
       themes,
       labels: themes,
+      songFamilyId: songFamilyId.trim() || undefined,
+      relationshipType: relationshipType || 'ORIGINAL',
+      songwriters: songwriters.trim() || undefined,
+      originalArtist: originalArtist.trim() || undefined,
+      lyrics: lyrics.trim() || undefined,
       dateAdded: songToEdit?.dateAdded || getManilaTodayString(),
       timesUsed: songToEdit?.timesUsed || 0,
       serviceHistory: songToEdit?.serviceHistory || []
@@ -240,6 +268,15 @@ export const SongFormModal: React.FC<SongFormModalProps> = ({
   const executeSave = async (data: Partial<Song> & { title: string }) => {
     try {
       const saved = await SongService.saveSong(data);
+
+      if (saved.songFamilyId) {
+        await SongFamilyService.addSongToFamily(
+          saved.songFamilyId,
+          saved.id,
+          saved.relationshipType || 'VERSION'
+        );
+      }
+
       onSave(saved);
       showToast(songToEdit ? 'Song updated successfully!' : 'Song added to database!', 'success');
       onClose();
@@ -376,6 +413,99 @@ export const SongFormModal: React.FC<SongFormModalProps> = ({
                   className="w-full px-3 py-2 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none"
                 />
               </div>
+            </div>
+
+            {/* Song Family & Relationship */}
+            <div className="p-3.5 rounded-xl bg-indigo-50/50 dark:bg-indigo-950/20 border border-indigo-100 dark:border-indigo-900/60 space-y-2.5">
+              <div className="flex items-center gap-2">
+                <Layers className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                <span className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                  Song Family & Relationship
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1">
+                    Assigned Song Family
+                  </label>
+                  <select
+                    value={songFamilyId}
+                    onChange={(e) => setSongFamilyId(e.target.value)}
+                    className="w-full px-3 py-2 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 outline-none"
+                  >
+                    <option value="">(Standalone Song / No Family)</option>
+                    {allFamilies.map((fam) => (
+                      <option key={fam.id} value={fam.id}>
+                        {fam.name} ({fam.versionIds.length} versions)
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1">
+                    Version Relationship Type
+                  </label>
+                  <select
+                    value={relationshipType}
+                    onChange={(e) => setRelationshipType(e.target.value as SongRelationshipType)}
+                    className="w-full px-3 py-2 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 outline-none"
+                  >
+                    <option value="ORIGINAL">Original Version</option>
+                    <option value="LIVE_VERSION">Live Version</option>
+                    <option value="ACOUSTIC_VERSION">Acoustic / Unplugged</option>
+                    <option value="COVER">Cover Version</option>
+                    <option value="REMAKE">Remake / Re-recording</option>
+                    <option value="ALTERNATE_VERSION">Alternate / Studio Edit</option>
+                    <option value="VERSION">General Version</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            {/* Songwriter & Original Artist */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  Songwriter(s) / Composer(s)
+                </label>
+                <input
+                  type="text"
+                  value={songwriters}
+                  onChange={(e) => setSongwriters(e.target.value)}
+                  placeholder="e.g. Chris Tomlin, Matt Redman"
+                  className="w-full px-3 py-2 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  Original Artist (if Cover)
+                </label>
+                <input
+                  type="text"
+                  value={originalArtist}
+                  onChange={(e) => setOriginalArtist(e.target.value)}
+                  placeholder="e.g. Hillsong Worship"
+                  className="w-full px-3 py-2 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none"
+                />
+              </div>
+            </div>
+
+            {/* Lyrics */}
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1 flex items-center gap-1">
+                <BookOpen className="w-3.5 h-3.5 text-slate-400" />
+                <span>Lyrics (Optional, used for identity verification)</span>
+              </label>
+              <textarea
+                rows={2}
+                value={lyrics}
+                onChange={(e) => setLyrics(e.target.value)}
+                placeholder="Paste song lyrics or chorus here..."
+                className="w-full px-3 py-2 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none"
+              />
             </div>
 
             {/* Category, Language & Original Key */}

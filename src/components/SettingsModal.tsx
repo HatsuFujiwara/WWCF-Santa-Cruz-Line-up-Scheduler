@@ -11,7 +11,8 @@ import {
   Info,
   Check,
   RotateCcw,
-  Play
+  Play,
+  QrCode
 } from 'lucide-react';
 
 interface SettingsModalProps {
@@ -21,6 +22,7 @@ interface SettingsModalProps {
   setIsDarkMode: (dark: boolean) => void;
   onOpenOnboarding: () => void;
   onOpenBackupRestore: () => void;
+  onOpenTransferData?: () => void;
   showToast?: (text: string, type?: 'success' | 'danger' | 'info') => void;
 }
 
@@ -31,6 +33,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   setIsDarkMode,
   onOpenOnboarding,
   onOpenBackupRestore,
+  onOpenTransferData,
   showToast
 }) => {
   const [guideMode, setGuideMode] = useState<GuideAutoShowMode>('first_visit');
@@ -68,6 +71,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   return (
     <div className="fixed inset-0 z-[999] flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs animate-in fade-in duration-200">
       <div
+        data-tour="settings-modal-container"
         className="w-full max-w-lg bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden flex flex-col max-h-[90vh] transform animate-in zoom-in-95 duration-200"
         onClick={(e) => e.stopPropagation()}
       >
@@ -229,6 +233,30 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               </button>
             </div>
           </div>
+
+          {/* Section: Device Transfer */}
+          {onOpenTransferData && (
+            <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/40 space-y-3">
+              <div className="flex items-center gap-2 text-slate-800 dark:text-slate-200 font-bold text-sm">
+                <QrCode className="w-4 h-4 text-[#1b75bc]" />
+                <span>PC → Phone Data Transfer</span>
+              </div>
+              <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                Transfer your application dataset directly between devices using a temporary QR code session and in-app camera scanner.
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  onOpenTransferData();
+                }}
+                className="w-full py-2 px-3 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-700 font-semibold text-xs rounded-xl transition-colors cursor-pointer flex items-center justify-center gap-2 shadow-2xs"
+              >
+                <QrCode className="w-3.5 h-3.5 text-[#1b75bc]" />
+                <span>Open Transfer Data Tool</span>
+              </button>
+            </div>
+          )}
 
           {/* Section: Backup & Recovery */}
           <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/40 space-y-3">

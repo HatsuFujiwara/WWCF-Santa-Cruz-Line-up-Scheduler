@@ -10,7 +10,16 @@ import {
 } from '../types';
 import { useMultiSelect } from '../hooks/useMultiSelect';
 import { Modal } from './Modal';
-import { filterAndSortMembers, MemberSortOption, MemberStatusFilter, isExactDuplicateName, isSimilarName } from '../utils/memberUtils';
+import {
+  filterAndSortMembers,
+  MemberSortOption,
+  MemberStatusFilter,
+  isExactDuplicateName,
+  isSimilarName,
+  getExistingUniqueTagHolder,
+  validateUniqueMemberRoles,
+  getNormalizedUniqueTagName
+} from '../utils/memberUtils';
 import { sortTags } from '../utils/tagUtils';
 import { getManilaTodayString, getManilaNowISO } from '../utils/dateUtils';
 import {
@@ -225,19 +234,39 @@ export const MemberEditorView: React.FC<MemberEditorViewProps> = ({
   });
 
   const toggleLabel = (label: string) => {
-    let updated: string[];
     if (selectedLabels.includes(label)) {
-      updated = selectedLabels.filter((l) => l !== label);
-    } else {
-      updated = [...selectedLabels, label];
+      // Removing a label is always allowed
+      setSelectedLabels(sortTags(selectedLabels.filter((l) => l !== label)));
+      return;
     }
-    setSelectedLabels(sortTags(updated));
+
+    // Check single-holder rule for Pastor & Worship Leader
+    const uniqueHolder = getExistingUniqueTagHolder(label, members, editingId);
+    if (uniqueHolder) {
+      showToast(
+        `Only one member in the roster may have the "${getNormalizedUniqueTagName(label)}" tag. It is currently assigned to ${uniqueHolder.name}.`,
+        'danger'
+      );
+      return;
+    }
+
+    setSelectedLabels(sortTags([...selectedLabels, label]));
   };
 
   const handleCreateCustomLabel = (e: React.FormEvent) => {
     e.preventDefault();
     const trimmed = customTagInput.trim();
     if (!trimmed) return;
+
+    // Check single-holder rule for Pastor & Worship Leader
+    const uniqueHolder = getExistingUniqueTagHolder(trimmed, members, editingId);
+    if (uniqueHolder) {
+      showToast(
+        `Only one member in the roster may have the "${getNormalizedUniqueTagName(trimmed)}" tag. It is currently assigned to ${uniqueHolder.name}.`,
+        'danger'
+      );
+      return;
+    }
 
     if (!labels.includes(trimmed)) {
       onAddCustomLabel(trimmed);
@@ -266,6 +295,13 @@ export const MemberEditorView: React.FC<MemberEditorViewProps> = ({
       Array.from(new Set([...(existingMember.labels || []), ...(pendingMember.labels || [])]))
     );
 
+    // Validate uniqueness when merging
+    const uniqueCheck = validateUniqueMemberRoles(mergedLabels, members, existingMember.id);
+    if (!uniqueCheck.isValid) {
+      showToast(uniqueCheck.errorMessage || 'Cannot merge: unique role conflict with another member.', 'danger');
+      return;
+    }
+
     const updatedMemberData: Omit<Member, 'id'> = {
       ...existingMember,
       labels: mergedLabels
@@ -283,6 +319,13 @@ export const MemberEditorView: React.FC<MemberEditorViewProps> = ({
 
     if (pendingMember.customTagToAdd) {
       onAddCustomLabel(pendingMember.customTagToAdd);
+    }
+
+    // Validate uniqueness when creating new
+    const uniqueCheck = validateUniqueMemberRoles(pendingMember.labels, members, editingId || undefined);
+    if (!uniqueCheck.isValid) {
+      showToast(uniqueCheck.errorMessage || 'Cannot create member: unique role conflict with existing roster member.', 'danger');
+      return;
     }
 
     onAddMember(
@@ -316,6 +359,13 @@ export const MemberEditorView: React.FC<MemberEditorViewProps> = ({
 
     if (finalLabels.length === 0) {
       showToast('Please select at least one tag or enter a custom tag before saving this member.', 'danger');
+      return;
+    }
+
+    // Check single-holder rule for Pastor & Worship Leader
+    const uniqueCheck = validateUniqueMemberRoles(finalLabels, members, editingId);
+    if (!uniqueCheck.isValid) {
+      showToast(uniqueCheck.errorMessage || 'Role conflict with an existing roster member.', 'danger');
       return;
     }
 
@@ -487,23 +537,73 @@ export const MemberEditorView: React.FC<MemberEditorViewProps> = ({
                 <div data-tour="member-tags-select" className="flex flex-wrap gap-1.5 p-3 rounded-lg bg-slate-50 dark:bg-slate-800/50 border border-slate-200/60 dark:border-slate-700/60 max-h-48 overflow-y-auto">
                   {sortTags(labels).map((label) => {
                     const isSelectedLabel = selectedLabels.includes(label);
+                    const uniqueConflictHolder = getExistingUniqueTagHolder(label, members, editingId);
+                    const isUniqueConflict = Boolean(uniqueConflictHolder);
+
                     return (
                       <button
                         key={label}
                         type="button"
                         onClick={() => toggleLabel(label)}
-                        className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold transition-all cursor-pointer select-none ${
-                          isSelectedLabel
-                            ? 'bg-indigo-600 text-white shadow-xs'
-                            : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700'
+                        title={
+                          isUniqueConflict
+                            ? `Only one member may have the "${getNormalizedUniqueTagName(label)}" tag (currently assigned to ${uniqueConflictHolder?.name}).`
+                            : undefined
+                        }
+                        className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold transition-all select-none ${
+                          isUniqueConflict
+                            ? 'bg-slate-100/80 dark:bg-slate-800/40 text-slate-400 dark:text-slate-500 border border-dashed border-slate-300 dark:border-slate-700 cursor-not-allowed opacity-60'
+                            : isSelectedLabel
+                            ? 'bg-indigo-600 text-white shadow-xs cursor-pointer'
+                            : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700 cursor-pointer'
                         }`}
                       >
                         {isSelectedLabel && <Check className="w-3 h-3" />}
                         <span>{label}</span>
+                        {isUniqueConflict && (
+                          <span className="text-[10px] text-slate-400 dark:text-slate-500" title="Single-holder role">
+                            🔒
+                          </span>
+                        )}
                       </button>
                     );
                   })}
                 </div>
+
+                {/* Single-Holder Notice */}
+                {(getExistingUniqueTagHolder('Pastor', members) || getExistingUniqueTagHolder('Worship Leader', members)) && (
+                  <div className="text-[11px] p-2.5 rounded-lg bg-indigo-50/60 dark:bg-indigo-950/30 border border-indigo-100/80 dark:border-indigo-900/40 text-slate-600 dark:text-slate-300 space-y-1">
+                    <div className="font-bold text-indigo-700 dark:text-indigo-400 uppercase tracking-wider text-[10px]">
+                      Single-Holder Roles (1 per Roster)
+                    </div>
+                    <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[11px]">
+                      {(() => {
+                        const pastor = getExistingUniqueTagHolder('Pastor', members);
+                        if (!pastor) return null;
+                        return (
+                          <span>
+                            <strong className="text-slate-700 dark:text-slate-200">Pastor:</strong> {pastor.name}
+                            {editingId === pastor.id && (
+                              <span className="text-indigo-600 dark:text-indigo-400 font-semibold"> (Current)</span>
+                            )}
+                          </span>
+                        );
+                      })()}
+                      {(() => {
+                        const wl = getExistingUniqueTagHolder('Worship Leader', members);
+                        if (!wl) return null;
+                        return (
+                          <span>
+                            <strong className="text-slate-700 dark:text-slate-200">Worship Leader:</strong> {wl.name}
+                            {editingId === wl.id && (
+                              <span className="text-indigo-600 dark:text-indigo-400 font-semibold"> (Current)</span>
+                            )}
+                          </span>
+                        );
+                      })()}
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Custom Tag input */}

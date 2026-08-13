@@ -1,16 +1,12 @@
 import React from 'react';
 import { ActiveTab } from '../types';
-import { Menu, Plus, Check, Database, Settings, HelpCircle } from 'lucide-react';
+import { Menu, Plus, Check } from 'lucide-react';
 
 interface HeaderProps {
   activeTab: ActiveTab;
-  setActiveTab: (tab: ActiveTab) => void;
   onOpenMobileMenu: () => void;
   isDraftSaved: boolean;
   onNewSchedule: () => void;
-  onOpenBackupRestore: () => void;
-  onOpenSettings: () => void;
-  onOpenHelp: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -18,9 +14,6 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenMobileMenu,
   isDraftSaved,
   onNewSchedule,
-  onOpenBackupRestore,
-  onOpenSettings,
-  onOpenHelp
 }) => {
   const titles: Record<ActiveTab, { title: string; subtitle: string }> = {
     dashboard: {
@@ -81,39 +74,6 @@ export const Header: React.FC<HeaderProps> = ({
               <span>Draft Auto-Saved</span>
             </div>
           )}
-
-          <button
-            type="button"
-            data-tour="header-help-btn"
-            onClick={onOpenHelp}
-            className="flex items-center gap-1.5 px-2.5 sm:px-3 py-2 text-xs font-semibold text-slate-700 dark:text-slate-200 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 border border-slate-200/80 dark:border-slate-700 rounded-lg transition-colors cursor-pointer"
-            title="User Guide & Help Menu"
-          >
-            <HelpCircle className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
-            <span className="hidden lg:inline">Help & Guide</span>
-          </button>
-
-          <button
-            type="button"
-            data-tour="header-settings-btn"
-            onClick={onOpenSettings}
-            className="flex items-center gap-1.5 px-2.5 sm:px-3 py-2 text-xs font-semibold text-slate-700 dark:text-slate-200 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 border border-slate-200/80 dark:border-slate-700 rounded-lg transition-colors cursor-pointer"
-            title="User Preferences & Guide"
-          >
-            <Settings className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
-            <span className="hidden md:inline">Settings</span>
-          </button>
-
-          <button
-            type="button"
-            data-tour="header-backup-btn"
-            onClick={onOpenBackupRestore}
-            className="flex items-center gap-1.5 px-2.5 sm:px-3 py-2 text-xs font-semibold text-slate-700 dark:text-slate-200 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 border border-slate-200/80 dark:border-slate-700 rounded-lg transition-colors cursor-pointer"
-            title="Backup Data / Restore Data"
-          >
-            <Database className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
-            <span className="hidden sm:inline">Backup & Restore</span>
-          </button>
 
           <button
             onClick={onNewSchedule}

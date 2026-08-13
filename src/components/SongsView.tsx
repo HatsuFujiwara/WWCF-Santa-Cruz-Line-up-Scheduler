@@ -1,10 +1,14 @@
-import React, { useState } from 'react';
-import { Song, Schedule, SongCategory } from '../types';
+import React, { useState, useEffect } from 'react';
+import { Song, Schedule, SongCategory, SongFamily, SongRelationshipType } from '../types';
 import { SongService } from '../services/songService';
+import { SongFamilyService } from '../services/songFamilyService';
+import { detectPotentialSongFamilies, PotentialFamilySuggestion } from '../utils/songFamilyUtils';
 import { getManilaTodayString } from '../utils/dateUtils';
 import { useMultiSelect } from '../hooks/useMultiSelect';
 import { SongFormModal } from './SongFormModal';
 import { PlaylistImportModal } from './PlaylistImportModal';
+import { SongFamilyModal } from './SongFamilyModal';
+import { SongFamilySuggestionsModal } from './SongFamilySuggestionsModal';
 import { Modal } from './Modal';
 import {
   Music,
@@ -25,7 +29,8 @@ import {
   ChevronDown,
   ChevronUp,
   Tag,
-  X
+  X,
+  Network
 } from 'lucide-react';
 
 interface SongsViewProps {
@@ -52,6 +57,28 @@ export const SongsView: React.FC<SongsViewProps> = ({
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [editingSong, setEditingSong] = useState<Song | null>(null);
+
+  // Song Family state
+  const [songFamilies, setSongFamilies] = useState<SongFamily[]>([]);
+  const [isFamilyModalOpen, setIsFamilyModalOpen] = useState(false);
+  const [familyToEdit, setFamilyToEdit] = useState<SongFamily | null>(null);
+  const [isSuggestionsModalOpen, setIsSuggestionsModalOpen] = useState(false);
+  const [familySuggestions, setFamilySuggestions] = useState<PotentialFamilySuggestion[]>([]);
+
+  const loadFamilies = async () => {
+    try {
+      const families = await SongFamilyService.getSongFamilies();
+      setSongFamilies(families);
+      const suggestions = detectPotentialSongFamilies(songs, families);
+      setFamilySuggestions(suggestions);
+    } catch (err) {
+      console.error('Failed to load song families:', err);
+    }
+  };
+
+  useEffect(() => {
+    loadFamilies();
+  }, [songs]);
 
   React.useEffect(() => {
     const handleCloseImportModal = () => {
@@ -243,7 +270,30 @@ export const SongsView: React.FC<SongsViewProps> = ({
           </p>
         </div>
 
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex flex-wrap items-center gap-2 shrink-0">
+          {familySuggestions.length > 0 && (
+            <button
+              onClick={() => setIsSuggestionsModalOpen(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-2.5 text-xs font-bold text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/80 hover:bg-amber-100 dark:hover:bg-amber-900/80 border border-amber-200/80 dark:border-amber-800/80 rounded-xl transition-colors cursor-pointer"
+              title="Auto-detect possible Song Families based on multi-source composition verification"
+            >
+              <Sparkles className="w-4 h-4 text-amber-500 animate-pulse" />
+              <span>Detect Families ({familySuggestions.length})</span>
+            </button>
+          )}
+
+          <button
+            onClick={() => {
+              setFamilyToEdit(null);
+              setIsFamilyModalOpen(true);
+            }}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2.5 text-xs font-bold text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 rounded-xl transition-colors cursor-pointer"
+            title="Manage multi-version song relationships & families"
+          >
+            <Layers className="w-4 h-4 text-indigo-500" />
+            <span>Song Families ({songFamilies.length})</span>
+          </button>
+
           <button
             onClick={() => setIsImportModalOpen(true)}
             data-tour="playlist-import-btn"
@@ -608,6 +658,33 @@ export const SongsView: React.FC<SongsViewProps> = ({
                           ))}
                         </div>
                       )}
+
+                      {/* Song Family Indicator */}
+                      {song.songFamilyId && (
+                        <div className="pt-1">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              const fam = songFamilies.find((f) => f.id === song.songFamilyId);
+                              if (fam) {
+                                setFamilyToEdit(fam);
+                                setIsFamilyModalOpen(true);
+                              }
+                            }}
+                            className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[10px] font-bold bg-indigo-50 dark:bg-indigo-950/80 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 hover:bg-indigo-100 dark:hover:bg-indigo-900 transition-colors cursor-pointer"
+                            title="Click to manage Song Family & versions"
+                          >
+                            <Layers className="w-3 h-3 text-indigo-500" />
+                            <span>Family: {songFamilies.find((f) => f.id === song.songFamilyId)?.name || 'Linked Family'}</span>
+                            {song.relationshipType && (
+                              <span className="text-[9px] px-1 py-0.2 rounded bg-indigo-200/60 dark:bg-indigo-900/60 font-semibold uppercase">
+                                {song.relationshipType.replace('_', ' ')}
+                              </span>
+                            )}
+                          </button>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -731,6 +808,35 @@ export const SongsView: React.FC<SongsViewProps> = ({
         isOpen={isImportModalOpen}
         onClose={() => setIsImportModalOpen(false)}
         onImportComplete={() => {
+          onRefreshSongs();
+          loadFamilies();
+        }}
+        showToast={showToast}
+      />
+
+      {/* Song Family Manager Modal */}
+      <SongFamilyModal
+        isOpen={isFamilyModalOpen}
+        familyToEdit={familyToEdit}
+        allSongs={songs}
+        onClose={() => {
+          setIsFamilyModalOpen(false);
+          setFamilyToEdit(null);
+        }}
+        onSaved={() => {
+          loadFamilies();
+          onRefreshSongs();
+        }}
+        showToast={showToast}
+      />
+
+      {/* Song Family Discovery Suggestions Modal */}
+      <SongFamilySuggestionsModal
+        isOpen={isSuggestionsModalOpen}
+        suggestions={familySuggestions}
+        onClose={() => setIsSuggestionsModalOpen(false)}
+        onApplied={() => {
+          loadFamilies();
           onRefreshSongs();
         }}
         showToast={showToast}

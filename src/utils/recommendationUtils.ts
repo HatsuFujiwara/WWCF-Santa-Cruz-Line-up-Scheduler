@@ -1,5 +1,6 @@
-import { Song, Schedule } from '../types';
+import { Song, Schedule, SongFamily } from '../types';
 import { formatDateDisplayManila, getManilaTodayString } from './dateUtils';
+import { SongService } from '../services/songService';
 
 export interface RecommendedSong {
   song: Song;
@@ -65,16 +66,20 @@ export function getLastWeekOfPreviousMonthRange(dateStr: string): { startDate: s
  * 1) Played in the current month (same calendar YYYY-MM).
  * 2) Played in the last 7 calendar days of the previous month (if current date is day 1..7 of new month).
  * Special events (e.g. Youth Fellowship) do NOT restrict recommendations for regular services (Sunday/Midweek).
+ * Song Family aware: if any version in the song's family was played, the whole family is prohibited.
  */
 export function isSongProhibitedByDateRules(
   songTitle: string,
   referenceDateStr: string,
   schedules: Schedule[],
-  targetServiceType?: string
+  targetServiceType?: string,
+  allSongs?: Song[],
+  allFamilies?: SongFamily[]
 ): boolean {
   const cleanTitle = songTitle.trim().toLowerCase();
   if (!cleanTitle || !referenceDateStr || schedules.length === 0) return false;
 
+  const familyTitles = new Set(SongService.getFamilySongTitles(songTitle, allSongs, allFamilies));
   const refYM = referenceDateStr.slice(0, 7);
   const inFirstWeek = isFirstWeekOfMonth(referenceDateStr);
   const prevWeekRange = inFirstWeek ? getLastWeekOfPreviousMonthRange(referenceDateStr) : null;
@@ -83,9 +88,9 @@ export function isSongProhibitedByDateRules(
   for (const sch of schedules) {
     if (!sch.serviceDate) continue;
 
-    // Check if sch contains this song
-    const inPraise = (sch.praiseSongs || []).some((s) => s.trim().toLowerCase() === cleanTitle);
-    const inWorship = (sch.worshipSongs || []).some((s) => s.trim().toLowerCase() === cleanTitle);
+    // Check if sch contains this song or any version of its family
+    const inPraise = (sch.praiseSongs || []).some((s) => familyTitles.has(s.trim().toLowerCase()));
+    const inWorship = (sch.worshipSongs || []).some((s) => familyTitles.has(s.trim().toLowerCase()));
     if (!inPraise && !inWorship) continue;
 
     // Special event exception: If recommending for regular service, ignore special events

@@ -18,10 +18,12 @@ import { HelpMenuModal } from './components/HelpMenuModal';
 import { InteractiveTourOverlay } from './components/InteractiveTourOverlay';
 import { WelcomeGuideModal } from './components/WelcomeGuideModal';
 import { NewLineupModal } from './components/NewLineupModal';
+import { TransferDataModal } from './components/TransferDataModal';
 import { exportLineupAsPDF, exportLineupAsPNG } from './services/exportService';
 import { sortTags } from './utils/tagUtils';
 import { getManilaNowISO, getManilaTodayString } from './utils/dateUtils';
 import { getNextAvailableServiceDate, getSmartInitialServiceDetails, ensureMonthlyPlaceholders, isScheduleEmpty } from './utils/scheduleUtils';
+import { validateUniqueMemberRoles } from './utils/memberUtils';
 
 export default function App() {
   // Navigation & UI state
@@ -89,6 +91,27 @@ export default function App() {
 
   // Backup & Restore Modal state
   const [isBackupModalOpen, setIsBackupModalOpen] = useState(false);
+
+  // Transfer Data Modal state
+  const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
+  const [initialTransferParams, setInitialTransferParams] = useState<{ sessionId: string; token: string } | null>(null);
+
+  // Auto-detect transfer session from URL parameters (e.g., when scanned via phone camera)
+  useEffect(() => {
+    try {
+      const urlParams = new URLSearchParams(window.location.search);
+      const sid = urlParams.get('transferSessionId');
+      const tok = urlParams.get('token');
+      if (sid && tok) {
+        setInitialTransferParams({ sessionId: sid, token: tok });
+        setIsTransferModalOpen(true);
+        // Clean URL search string without reloading
+        window.history.replaceState({}, '', window.location.pathname);
+      }
+    } catch (e) {
+      console.error('Error parsing transfer URL params:', e);
+    }
+  }, []);
 
   // New Lineup Flow Modal state
   const [isNewLineupModalOpen, setIsNewLineupModalOpen] = useState(false);
@@ -267,6 +290,12 @@ export default function App() {
 
   // Member Operations
   const handleAddMember = (memberData: Omit<Member, 'id'>, id?: string) => {
+    const uniqueCheck = validateUniqueMemberRoles(memberData.labels, members, id);
+    if (!uniqueCheck.isValid) {
+      showToast(uniqueCheck.errorMessage || 'Role conflict with existing roster member.', 'danger');
+      return;
+    }
+
     let updatedMembers: Member[];
     if (id) {
       updatedMembers = members.map((m) => (m.id === id ? { ...memberData, id } : m));
@@ -393,6 +422,7 @@ export default function App() {
         isOpen={isMobileMenuOpen}
         setIsOpen={setIsMobileMenuOpen}
         onOpenBackupRestore={() => setIsBackupModalOpen(true)}
+        onOpenTransferData={() => setIsTransferModalOpen(true)}
         onOpenSettings={() => setIsSettingsOpen(true)}
         onOpenHelp={() => setIsHelpMenuOpen(true)}
       />
@@ -401,13 +431,9 @@ export default function App() {
       <div className="flex-1 lg:pl-64 flex flex-col min-w-0">
         <Header
           activeTab={activeTab}
-          setActiveTab={setActiveTab}
           onOpenMobileMenu={() => setIsMobileMenuOpen(true)}
           isDraftSaved={isDraftSaved}
           onNewSchedule={handleNewScheduleClick}
-          onOpenBackupRestore={() => setIsBackupModalOpen(true)}
-          onOpenSettings={() => setIsSettingsOpen(true)}
-          onOpenHelp={() => setIsHelpMenuOpen(true)}
         />
 
         <main className="flex-1 p-4 sm:p-8 max-w-7xl w-full mx-auto">
@@ -500,7 +526,30 @@ export default function App() {
           setIsOnboardingOpen(true);
         }}
         onOpenBackupRestore={() => setIsBackupModalOpen(true)}
+        onOpenTransferData={() => setIsTransferModalOpen(true)}
         showToast={showToast}
+      />
+
+      {/* Transfer Data Modal (PC to Phone Data Transfer) */}
+      <TransferDataModal
+        isOpen={isTransferModalOpen}
+        onClose={() => {
+          setIsTransferModalOpen(false);
+          setInitialTransferParams(null);
+        }}
+        members={members}
+        songs={songs}
+        schedules={schedules}
+        labels={labels}
+        draftSchedule={StorageService.getDraftSchedule()}
+        onDataTransferred={() => {
+          setMembers(StorageService.getMembersSync());
+          setLabels(StorageService.getLabelsSync());
+          setSchedules(StorageService.getSchedulesSync());
+          loadSongs();
+        }}
+        showToast={showToast}
+        initialSessionParams={initialTransferParams}
       />
 
       {/* Welcome Guide Greeting Modal */}

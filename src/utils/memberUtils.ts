@@ -231,3 +231,73 @@ export function filterAndSortMembers(
     return nameA.localeCompare(nameB, undefined, { numeric: true, sensitivity: 'base' });
   });
 }
+
+/**
+ * Unique hierarchy tags that may only be assigned to a single member across the entire roster.
+ */
+export const UNIQUE_HIERARCHY_TAGS = ['Pastor', 'Worship Leader'] as const;
+export type UniqueHierarchyTag = typeof UNIQUE_HIERARCHY_TAGS[number];
+
+/**
+ * Checks if a given tag name is one of the unique hierarchy tags (Pastor or Worship Leader).
+ */
+export function isUniqueHierarchyTag(tag: string): boolean {
+  if (!tag) return false;
+  const lower = tag.trim().toLowerCase();
+  return lower === 'pastor' || lower === 'worship leader';
+}
+
+/**
+ * Normalizes unique tag display name ('Pastor' or 'Worship Leader').
+ */
+export function getNormalizedUniqueTagName(tag: string): string {
+  const lower = tag.trim().toLowerCase();
+  if (lower === 'pastor') return 'Pastor';
+  if (lower === 'worship leader') return 'Worship Leader';
+  return tag.trim();
+}
+
+/**
+ * Finds the member who currently holds the specified unique tag (excluding an optional member ID, e.g. when editing).
+ */
+export function getExistingUniqueTagHolder(
+  tag: string,
+  members: Member[],
+  excludeMemberId?: string | null
+): Member | undefined {
+  if (!tag || !isUniqueHierarchyTag(tag)) return undefined;
+  const targetLower = tag.trim().toLowerCase();
+  return members.find((m) => {
+    if (excludeMemberId && m.id === excludeMemberId) return false;
+    return (m.labels || []).some((l) => l.trim().toLowerCase() === targetLower);
+  });
+}
+
+/**
+ * Validates a member's labels against the single-holder constraint for Pastor and Worship Leader.
+ * Returns an object with isValid and a descriptive errorMessage if a violation occurs.
+ */
+export function validateUniqueMemberRoles(
+  labels: string[],
+  members: Member[],
+  excludeMemberId?: string | null
+): { isValid: boolean; errorMessage?: string; conflictingTag?: string; holderName?: string } {
+  if (!labels || labels.length === 0) return { isValid: true };
+
+  for (const rawTag of labels) {
+    if (!rawTag) continue;
+    const tag = rawTag.trim();
+    const holder = getExistingUniqueTagHolder(tag, members, excludeMemberId);
+    if (holder) {
+      const normalizedRole = getNormalizedUniqueTagName(tag);
+      return {
+        isValid: false,
+        errorMessage: `Only one member in the roster may have the "${normalizedRole}" tag. It is currently assigned to ${holder.name}.`,
+        conflictingTag: normalizedRole,
+        holderName: holder.name
+      };
+    }
+  }
+
+  return { isValid: true };
+}
