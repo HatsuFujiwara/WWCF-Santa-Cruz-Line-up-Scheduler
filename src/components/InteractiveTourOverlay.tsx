@@ -116,6 +116,82 @@ export const InteractiveTourOverlay: React.FC<InteractiveTourOverlayProps> = ({
     });
   };
 
+  // Dynamic selector resolver for multi-branch steps and modals
+  const resolveTargetSelector = (s: TourStep | null): string => {
+    if (!s) return '';
+
+    if (s.id === 110) {
+      if (document.querySelector('[data-tour="new-lineup-options-container"]')) {
+        return '[data-tour="new-lineup-options-container"]';
+      }
+      if (document.querySelector('[data-tour="new-lineup-option-load"]')) {
+        return '[data-tour="new-lineup-option-load"]';
+      }
+      if (document.querySelector('[data-tour="new-lineup-option-create"]')) {
+        return '[data-tour="new-lineup-option-create"]';
+      }
+      if (document.querySelector('[data-tour="new-lineup-modal-container"]')) {
+        return '[data-tour="new-lineup-modal-container"]';
+      }
+      return '[data-tour="header-new-lineup-btn"]';
+    }
+
+    if (s.id === 2) {
+      if (document.querySelector('[data-tour="load-service-type-select"]')) {
+        return '[data-tour="load-service-type-select"]';
+      }
+      if (document.querySelector('[data-tour="create-service-type-select"]')) {
+        return '[data-tour="create-service-type-select"]';
+      }
+      if (document.querySelector('[data-tour="service-type-select"]')) {
+        return '[data-tour="service-type-select"]';
+      }
+      return '[data-tour="load-service-type-select"]';
+    }
+
+    if (s.id === 3) {
+      if (document.querySelector('[data-tour="load-schedule-date-select"]')) {
+        return '[data-tour="load-schedule-date-select"]';
+      }
+      if (document.querySelector('[data-tour="create-service-date-input"]')) {
+        return '[data-tour="create-service-date-input"]';
+      }
+      if (document.querySelector('[data-tour="service-date-picker"]')) {
+        return '[data-tour="service-date-picker"]';
+      }
+      return '[data-tour="load-schedule-date-select"]';
+    }
+
+    if (s.id === 35) {
+      if (document.querySelector('[data-tour="load-lineup-submit-btn"]')) {
+        return '[data-tour="load-lineup-submit-btn"]';
+      }
+      if (document.querySelector('[data-tour="create-lineup-submit-btn"]')) {
+        return '[data-tour="create-lineup-submit-btn"]';
+      }
+      if (document.querySelector('[data-tour="conflict-load-existing-btn"]')) {
+        return '[data-tour="conflict-load-existing-btn"]';
+      }
+      return '[data-tour="load-lineup-submit-btn"]';
+    }
+
+    if (s.id === 42) {
+      const doneBtn = document.querySelector('[data-tour="import-done-btn"]');
+      const submitBtn = document.querySelector('[data-tour="import-submit-btn"]');
+      const urlInput = document.querySelector('[data-tour="playlist-url-input"]');
+      const modalContainer = document.querySelector('[data-tour="import-modal-container"]');
+      const importPlaylistBtn = document.querySelector('[data-tour="import-playlist-btn"]');
+
+      if (doneBtn) return '[data-tour="import-done-btn"]';
+      if (submitBtn) return '[data-tour="import-submit-btn"]';
+      if (urlInput) return '[data-tour="playlist-url-input"]';
+      if (modalContainer) return '[data-tour="import-modal-container"]';
+      if (importPlaylistBtn) return '[data-tour="import-playlist-btn"]';
+    }
+
+    return s.targetSelector;
+  };
+
   // Recalculate spotlight target rect
   const updateTargetRect = () => {
     if (!isOpen || !step) {
@@ -123,27 +199,7 @@ export const InteractiveTourOverlay: React.FC<InteractiveTourOverlayProps> = ({
       return;
     }
 
-    let targetSelector = step.targetSelector;
-    if (step.id === 42) {
-      const doneBtn = document.querySelector('[data-tour="import-done-btn"]');
-      const submitBtn = document.querySelector('[data-tour="import-submit-btn"]');
-      const urlInput = document.querySelector('[data-tour="playlist-url-input"]');
-      const modalContainer = document.querySelector('[data-tour="import-modal-container"]');
-      const importPlaylistBtn = document.querySelector('[data-tour="import-playlist-btn"]');
-
-      if (doneBtn) {
-        targetSelector = '[data-tour="import-done-btn"]';
-      } else if (submitBtn) {
-        targetSelector = '[data-tour="import-submit-btn"]';
-      } else if (urlInput) {
-        targetSelector = '[data-tour="playlist-url-input"]';
-      } else if (modalContainer) {
-        targetSelector = '[data-tour="import-modal-container"]';
-      } else if (importPlaylistBtn) {
-        targetSelector = '[data-tour="import-playlist-btn"]';
-      }
-    }
-
+    const targetSelector = resolveTargetSelector(step);
     const el = document.querySelector(targetSelector);
     if (el) {
       const rect = el.getBoundingClientRect();
@@ -171,20 +227,7 @@ export const InteractiveTourOverlay: React.FC<InteractiveTourOverlayProps> = ({
         await new Promise((resolve) => setTimeout(resolve, 80));
       }
 
-      let selector = step.targetSelector;
-      if (step.id === 42) {
-        const doneBtn = document.querySelector('[data-tour="import-done-btn"]');
-        const submitBtn = document.querySelector('[data-tour="import-submit-btn"]');
-        const urlInput = document.querySelector('[data-tour="playlist-url-input"]');
-        const modalContainer = document.querySelector('[data-tour="import-modal-container"]');
-        const importPlaylistBtn = document.querySelector('[data-tour="import-playlist-btn"]');
-
-        if (doneBtn) selector = '[data-tour="import-done-btn"]';
-        else if (submitBtn) selector = '[data-tour="import-submit-btn"]';
-        else if (urlInput) selector = '[data-tour="playlist-url-input"]';
-        else if (modalContainer) selector = '[data-tour="import-modal-container"]';
-        else if (importPlaylistBtn) selector = '[data-tour="import-playlist-btn"]';
-      }
+      const selector = resolveTargetSelector(step);
 
       // 2. Scroll to target element FIRST
       await scrollToTargetElement(selector);
@@ -450,14 +493,33 @@ export const InteractiveTourOverlay: React.FC<InteractiveTourOverlayProps> = ({
     const handleGlobalInteraction = (e: Event) => {
       if (isAdvancingRef.current) return;
 
-      const targetEl = document.querySelector(step.targetSelector);
-      if (!targetEl) return;
+      const selector = resolveTargetSelector(step);
+      const targetEl = selector ? document.querySelector(selector) : null;
 
       const eventTarget = e.target as Node | null;
       if (!eventTarget) return;
 
       // Check if event occurred on or inside targetEl
-      const isTargetMatch = targetEl === eventTarget || targetEl.contains(eventTarget);
+      let isTargetMatch = Boolean(targetEl && (targetEl === eventTarget || targetEl.contains(eventTarget)));
+
+      if (step.id === 110) {
+        const optionLoad = document.querySelector('[data-tour="new-lineup-option-load"]');
+        const optionCreate = document.querySelector('[data-tour="new-lineup-option-create"]');
+        if ((optionLoad && (optionLoad === eventTarget || optionLoad.contains(eventTarget))) ||
+            (optionCreate && (optionCreate === eventTarget || optionCreate.contains(eventTarget)))) {
+          isTargetMatch = true;
+        }
+      } else if (step.id === 35) {
+        const loadBtn = document.querySelector('[data-tour="load-lineup-submit-btn"]');
+        const createBtn = document.querySelector('[data-tour="create-lineup-submit-btn"]');
+        const conflictBtn = document.querySelector('[data-tour="conflict-load-existing-btn"]');
+        if ((loadBtn && (loadBtn === eventTarget || loadBtn.contains(eventTarget))) ||
+            (createBtn && (createBtn === eventTarget || createBtn.contains(eventTarget))) ||
+            (conflictBtn && (conflictBtn === eventTarget || conflictBtn.contains(eventTarget)))) {
+          isTargetMatch = true;
+        }
+      }
+
       if (!isTargetMatch) return;
 
       // Validate action type
@@ -482,7 +544,37 @@ export const InteractiveTourOverlay: React.FC<InteractiveTourOverlayProps> = ({
       setTimeout(() => {
         if (currentStepIndexRef.current < INTERACTIVE_GUIDE_STEPS.length - 1) {
           const currStep = INTERACTIVE_GUIDE_STEPS[currentStepIndexRef.current];
-          if (currStep.id === 4) {
+          if (currStep.id === 1) {
+            const idx110 = INTERACTIVE_GUIDE_STEPS.findIndex((s) => s.id === 110);
+            if (idx110 !== -1) {
+              goToStep(idx110);
+              return;
+            }
+          } else if (currStep.id === 110) {
+            const idx2 = INTERACTIVE_GUIDE_STEPS.findIndex((s) => s.id === 2);
+            if (idx2 !== -1) {
+              goToStep(idx2);
+              return;
+            }
+          } else if (currStep.id === 2) {
+            const idx3 = INTERACTIVE_GUIDE_STEPS.findIndex((s) => s.id === 3);
+            if (idx3 !== -1) {
+              goToStep(idx3);
+              return;
+            }
+          } else if (currStep.id === 3) {
+            const idx35 = INTERACTIVE_GUIDE_STEPS.findIndex((s) => s.id === 35);
+            if (idx35 !== -1) {
+              goToStep(idx35);
+              return;
+            }
+          } else if (currStep.id === 35) {
+            const idx4 = INTERACTIVE_GUIDE_STEPS.findIndex((s) => s.id === 4);
+            if (idx4 !== -1) {
+              goToStep(idx4);
+              return;
+            }
+          } else if (currStep.id === 4) {
             const idx4a = INTERACTIVE_GUIDE_STEPS.findIndex((s) => s.id === 41);
             if (idx4a !== -1) {
               goToStep(idx4a);
@@ -532,21 +624,7 @@ export const InteractiveTourOverlay: React.FC<InteractiveTourOverlayProps> = ({
       }
 
       // 2. Resolve target selector for current guide step
-      let targetSelector = step?.targetSelector;
-      if (step?.id === 42) {
-        const doneBtn = document.querySelector('[data-tour="import-done-btn"]');
-        const submitBtn = document.querySelector('[data-tour="import-submit-btn"]');
-        const urlInput = document.querySelector('[data-tour="playlist-url-input"]');
-        const modalContainer = document.querySelector('[data-tour="import-modal-container"]');
-        const importPlaylistBtn = document.querySelector('[data-tour="import-playlist-btn"]');
-
-        if (doneBtn) targetSelector = '[data-tour="import-done-btn"]';
-        else if (submitBtn) targetSelector = '[data-tour="import-submit-btn"]';
-        else if (urlInput) targetSelector = '[data-tour="playlist-url-input"]';
-        else if (modalContainer) targetSelector = '[data-tour="import-modal-container"]';
-        else if (importPlaylistBtn) targetSelector = '[data-tour="import-playlist-btn"]';
-      }
-
+      const targetSelector = resolveTargetSelector(step);
       let targetEl: Element | null = null;
       if (targetSelector) {
         targetEl = document.querySelector(targetSelector);
@@ -555,7 +633,29 @@ export const InteractiveTourOverlay: React.FC<InteractiveTourOverlayProps> = ({
         }
       }
 
-      // 3. Allow interactions inside active modals (Import Playlist modal, Song Picker, Confirmation modal, etc.)
+      if (step?.id === 110) {
+        const optionLoad = document.querySelector('[data-tour="new-lineup-option-load"]');
+        const optionCreate = document.querySelector('[data-tour="new-lineup-option-create"]');
+        if ((optionLoad && optionLoad.contains(element)) || (optionCreate && optionCreate.contains(element))) {
+          return true;
+        }
+      }
+
+      if (step?.id === 35) {
+        const loadBtn = document.querySelector('[data-tour="load-lineup-submit-btn"]');
+        const createBtn = document.querySelector('[data-tour="create-lineup-submit-btn"]');
+        const conflictBtn = document.querySelector('[data-tour="conflict-load-existing-btn"]');
+        if ((loadBtn && loadBtn.contains(element)) || (createBtn && createBtn.contains(element)) || (conflictBtn && conflictBtn.contains(element))) {
+          return true;
+        }
+      }
+
+      // 3. Allow interactions inside active modals (New Lineup modal, Import Playlist modal, Song Picker, Confirmation modal, etc.)
+      const newLineupModal = document.querySelector('[data-tour="new-lineup-modal-container"]');
+      if (newLineupModal && newLineupModal.contains(element)) {
+        return true;
+      }
+
       const importModal = document.querySelector('[data-tour="import-modal-container"]');
       if (importModal && importModal.contains(element)) {
         return true;
@@ -711,7 +811,50 @@ export const InteractiveTourOverlay: React.FC<InteractiveTourOverlayProps> = ({
   };
 
   const handleNext = () => {
-    if (step.id === 4) {
+    if (step.id === 1) {
+      const idx110 = INTERACTIVE_GUIDE_STEPS.findIndex((s) => s.id === 110);
+      if (idx110 !== -1) {
+        goToStep(idx110);
+        return;
+      }
+    } else if (step.id === 110) {
+      const idx2 = INTERACTIVE_GUIDE_STEPS.findIndex((s) => s.id === 2);
+      if (idx2 !== -1) {
+        goToStep(idx2);
+        return;
+      }
+    } else if (step.id === 2) {
+      const idx3 = INTERACTIVE_GUIDE_STEPS.findIndex((s) => s.id === 3);
+      if (idx3 !== -1) {
+        goToStep(idx3);
+        return;
+      }
+    } else if (step.id === 3) {
+      const hasModalSubmit = Boolean(
+        document.querySelector('[data-tour="load-lineup-submit-btn"]') ||
+        document.querySelector('[data-tour="create-lineup-submit-btn"]') ||
+        document.querySelector('[data-tour="conflict-load-existing-btn"]')
+      );
+      if (hasModalSubmit) {
+        const idx35 = INTERACTIVE_GUIDE_STEPS.findIndex((s) => s.id === 35);
+        if (idx35 !== -1) {
+          goToStep(idx35);
+          return;
+        }
+      } else {
+        const idx4 = INTERACTIVE_GUIDE_STEPS.findIndex((s) => s.id === 4);
+        if (idx4 !== -1) {
+          goToStep(idx4);
+          return;
+        }
+      }
+    } else if (step.id === 35) {
+      const idx4 = INTERACTIVE_GUIDE_STEPS.findIndex((s) => s.id === 4);
+      if (idx4 !== -1) {
+        goToStep(idx4);
+        return;
+      }
+    } else if (step.id === 4) {
       const idx4a = INTERACTIVE_GUIDE_STEPS.findIndex((s) => s.id === 41);
       if (idx4a !== -1) {
         goToStep(idx4a);
@@ -742,7 +885,47 @@ export const InteractiveTourOverlay: React.FC<InteractiveTourOverlayProps> = ({
   };
 
   const handlePrev = () => {
-    if (step.id === 41 || step.id === 42 || step.id === 5) {
+    if (step.id === 110) {
+      const idx1 = INTERACTIVE_GUIDE_STEPS.findIndex((s) => s.id === 1);
+      if (idx1 !== -1) {
+        goToStep(idx1);
+        return;
+      }
+    } else if (step.id === 2) {
+      const idx110 = INTERACTIVE_GUIDE_STEPS.findIndex((s) => s.id === 110);
+      if (idx110 !== -1) {
+        goToStep(idx110);
+        return;
+      }
+    } else if (step.id === 3) {
+      const idx2 = INTERACTIVE_GUIDE_STEPS.findIndex((s) => s.id === 2);
+      if (idx2 !== -1) {
+        goToStep(idx2);
+        return;
+      }
+    } else if (step.id === 35) {
+      const idx3 = INTERACTIVE_GUIDE_STEPS.findIndex((s) => s.id === 3);
+      if (idx3 !== -1) {
+        goToStep(idx3);
+        return;
+      }
+    } else if (step.id === 4) {
+      const idx35 = INTERACTIVE_GUIDE_STEPS.findIndex((s) => s.id === 35);
+      if (idx35 !== -1 && document.querySelector('[data-tour="new-lineup-modal-container"]')) {
+        goToStep(idx35);
+        return;
+      }
+      const idx3 = INTERACTIVE_GUIDE_STEPS.findIndex((s) => s.id === 3);
+      if (idx3 !== -1 && document.querySelector('[data-tour="new-lineup-modal-container"]')) {
+        goToStep(idx3);
+        return;
+      }
+      const idx1 = INTERACTIVE_GUIDE_STEPS.findIndex((s) => s.id === 1);
+      if (idx1 !== -1) {
+        goToStep(idx1);
+        return;
+      }
+    } else if (step.id === 41 || step.id === 42 || step.id === 5) {
       const idx4 = INTERACTIVE_GUIDE_STEPS.findIndex((s) => s.id === 4);
       if (idx4 !== -1) {
         goToStep(idx4);
@@ -787,6 +970,8 @@ export const InteractiveTourOverlay: React.FC<InteractiveTourOverlayProps> = ({
   const isLastStep = currentStepIndex === totalSteps - 1;
 
   const getStepBadgeText = () => {
+    if (step.id === 110) return 'Step 1B of 7';
+    if (step.id === 35) return 'Step 3B of 7';
     if (step.id === 41) return 'Step 4A of 7';
     if (step.id === 42) return 'Step 4B of 7';
     if (step.id <= 7) return `Step ${step.id} of 7`;
@@ -794,6 +979,11 @@ export const InteractiveTourOverlay: React.FC<InteractiveTourOverlayProps> = ({
   };
 
   const getProgressPercent = () => {
+    if (step.id === 1) return (1 / 7) * 100;
+    if (step.id === 110) return (1.5 / 7) * 100;
+    if (step.id === 2) return (2 / 7) * 100;
+    if (step.id === 3) return (3 / 7) * 100;
+    if (step.id === 35) return (3.5 / 7) * 100;
     if (step.id === 41 || step.id === 42) return (4 / 7) * 100;
     if (step.id <= 7) return (step.id / 7) * 100;
     return 100;

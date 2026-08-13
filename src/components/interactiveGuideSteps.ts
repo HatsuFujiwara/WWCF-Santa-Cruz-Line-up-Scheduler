@@ -14,7 +14,7 @@ export interface TourStep {
 }
 
 export const INTERACTIVE_GUIDE_STEPS: TourStep[] = [
-  // BASIC LINEUP GUIDE (Steps 1–7)
+  // BASIC LINEUP GUIDE (Steps 1–8)
   {
     id: 1,
     sectionTitle: 'Basic Guide',
@@ -23,39 +23,72 @@ export const INTERACTIVE_GUIDE_STEPS: TourStep[] = [
     targetSelector: '[data-tour="header-new-lineup-btn"]',
     actionPrompt: 'Click "+ New Lineup" to start.',
     actionType: 'click',
-    description: 'Start a new worship line-up draft set.',
-    bullets: ['Initializes a new lineup draft for your upcoming service.'],
-    rule: 'Step 1: Open or create a line-up.'
+    description: 'Choose whether you want to load an existing Sunday/Midweek lineup or create a new lineup for another service.',
+    bullets: [
+      'Sunday Service and Midweek Prayer Service lineups are automatically created.',
+      'Click "+ New Lineup" to open the selection menu and choose your action.'
+    ],
+    rule: 'Step 1: Click New Lineup to choose an action.'
+  },
+  {
+    id: 110,
+    sectionTitle: 'Basic Guide',
+    stepTitle: 'Choose Action: Load or Create',
+    targetTab: 'scheduler',
+    targetSelector: '[data-tour="new-lineup-options-container"]',
+    actionPrompt: 'Choose "Load Existing Lineup" or "Create New Lineup".',
+    actionType: 'click',
+    description: 'Select whether to load an automatically created Sunday/Midweek lineup or create a new set for another service.',
+    bullets: [
+      'Load Existing Lineup: Open an automatically created Sunday or Midweek lineup.',
+      'Create New Lineup: Create a lineup for Youth Fellowship, Worship Event, or custom service.'
+    ],
+    rule: 'Step 1B: Choose Load Existing Lineup or Create New Lineup.'
   },
   {
     id: 2,
     sectionTitle: 'Basic Guide',
     stepTitle: 'Select Service Type',
     targetTab: 'scheduler',
-    targetSelector: '[data-tour="service-type-select"]',
+    targetSelector: '[data-tour="load-service-type-select"]',
     actionPrompt: 'Select your service type.',
     actionType: 'none',
-    description: 'Choose Sunday Service, Midweek Prayer, or special worship service.',
+    description: 'Select the service you want to load or create.',
     bullets: [
-      'Select Sunday Service or Midweek Prayer Service.',
-      'Automatically configures default song slots for the selected service.'
+      'For Load Existing: Choose Sunday Service or Midweek Prayer Service.',
+      'For Create New: Choose Youth Fellowship, Worship Event, or Custom Service.'
     ],
     rule: 'Step 2: Select service type.'
   },
   {
     id: 3,
     sectionTitle: 'Basic Guide',
-    stepTitle: 'Select Service Date',
+    stepTitle: 'Select Service Date / Lineup',
     targetTab: 'scheduler',
-    targetSelector: '[data-tour="service-date-picker"]',
-    actionPrompt: 'Select your service date.',
+    targetSelector: '[data-tour="load-schedule-date-select"]',
+    actionPrompt: 'Choose the existing lineup or service date.',
     actionType: 'none',
-    description: 'Pick the scheduled date for this worship service.',
+    description: 'Choose the existing lineup date to open or set the date for a new service.',
     bullets: [
-      'Sunday Service defaults to the next available Sunday.',
-      'Midweek Prayer Service defaults to Wednesday but allows date flexibility.'
+      'For Load Existing: Select the existing lineup date to open.',
+      'For Create New: Set the scheduled date for your upcoming service.'
     ],
-    rule: 'Step 3: Select service date.'
+    rule: 'Step 3: Select lineup date.'
+  },
+  {
+    id: 35,
+    sectionTitle: 'Basic Guide',
+    stepTitle: 'Load or Create Lineup',
+    targetTab: 'scheduler',
+    targetSelector: '[data-tour="load-lineup-submit-btn"]',
+    actionPrompt: 'Click "Load Lineup" or "Continue" to proceed.',
+    actionType: 'click',
+    description: 'Confirm your lineup selection to open it in the scheduler editor.',
+    bullets: [
+      'Opens the selected or newly created lineup set in the editor.',
+      'All songs, roles, and notes will be ready for management.'
+    ],
+    rule: 'Step 3B: Open selected lineup.'
   },
   {
     id: 4,

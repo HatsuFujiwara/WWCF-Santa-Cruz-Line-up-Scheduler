@@ -17,6 +17,7 @@ import { SettingsModal } from './components/SettingsModal';
 import { HelpMenuModal } from './components/HelpMenuModal';
 import { InteractiveTourOverlay } from './components/InteractiveTourOverlay';
 import { WelcomeGuideModal } from './components/WelcomeGuideModal';
+import { NewLineupModal } from './components/NewLineupModal';
 import { exportLineupAsPDF, exportLineupAsPNG } from './services/exportService';
 import { sortTags } from './utils/tagUtils';
 import { getManilaNowISO, getManilaTodayString } from './utils/dateUtils';
@@ -88,6 +89,9 @@ export default function App() {
 
   // Backup & Restore Modal state
   const [isBackupModalOpen, setIsBackupModalOpen] = useState(false);
+
+  // New Lineup Flow Modal state
+  const [isNewLineupModalOpen, setIsNewLineupModalOpen] = useState(false);
 
   // Settings, Welcome & Onboarding Modals
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -343,9 +347,39 @@ export default function App() {
   };
 
   const handleNewScheduleClick = () => {
-    setEditingSchedule(null);
+    setIsNewLineupModalOpen(true);
+  };
+
+  const handleLoadExistingLineup = (schedule: Schedule) => {
+    handleEditScheduleFromList(schedule);
+  };
+
+  const handleCreateNewLineup = (serviceType: string, serviceDate: string) => {
+    const existing = schedules.find(
+      (s) => s.serviceType === serviceType && s.serviceDate === serviceDate
+    );
+    if (existing) {
+      handleEditScheduleFromList(existing);
+      return;
+    }
+
+    const newSchedule: Schedule = {
+      id: `sch_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+      serviceType: serviceType as any,
+      serviceDate: serviceDate,
+      praiseSongs: [''],
+      worshipSongs: [''],
+      praiseSongKeys: [''],
+      worshipSongKeys: [''],
+      ministryAssignments: [],
+      notes: '',
+      updatedAt: getManilaNowISO()
+    };
+
+    setEditingSchedule(newSchedule);
     StorageService.saveDraftSchedule(null);
     setActiveTab('scheduler');
+    showToast(`Created new lineup for ${serviceType} on ${serviceDate}.`, 'success');
   };
 
   return (
@@ -507,6 +541,15 @@ export default function App() {
         isDanger={modalConfig.isDanger}
         onConfirm={modalConfig.onConfirm}
         onClose={() => setModalConfig((prev) => ({ ...prev, isOpen: false }))}
+      />
+
+      {/* New Lineup Selection Modal */}
+      <NewLineupModal
+        isOpen={isNewLineupModalOpen}
+        onClose={() => setIsNewLineupModalOpen(false)}
+        schedules={schedules}
+        onLoadExistingLineup={handleLoadExistingLineup}
+        onCreateNewLineup={handleCreateNewLineup}
       />
 
       {/* Toast Notifications */}
