@@ -378,4 +378,40 @@ export class StorageService {
       console.error(e);
     }
   }
+
+  /**
+   * Securely purges all user-created application data and resets the database to a fresh state.
+   */
+  static async deleteAllData(): Promise<void> {
+    try {
+      // 1. Explicitly reset core datasets in localStorage
+      localStorage.setItem(STORAGE_KEYS.MEMBERS, JSON.stringify([]));
+      localStorage.setItem(STORAGE_KEYS.SCHEDULES, JSON.stringify([]));
+      localStorage.setItem(STORAGE_KEYS.LABELS, JSON.stringify(DEFAULT_LABELS));
+      localStorage.setItem('wwcf_songs_v1', JSON.stringify([]));
+      localStorage.setItem('wwcf_song_families_v1', JSON.stringify([]));
+
+      // 2. Remove draft schedules & custom local sort/search preferences
+      localStorage.removeItem(STORAGE_KEYS.DRAFT_V2);
+      localStorage.removeItem(STORAGE_KEYS.DRAFT_V1);
+      localStorage.removeItem('wwcf_member_sort_v1');
+      localStorage.removeItem('schedules_sort_option');
+      localStorage.removeItem('YOUTUBE_API_KEY');
+
+      // 3. Propagate changes to dataRepository adapter
+      await dataRepository.saveMembers([]);
+      await dataRepository.saveSchedules([]);
+      await dataRepository.saveLabels(DEFAULT_LABELS);
+      await dataRepository.saveDraftSchedule(null);
+
+      // 4. Reset guide preferences
+      this.resetGuidePreferences();
+
+      // 5. Clear temporary session caches
+      sessionStorage.clear();
+    } catch (e) {
+      console.error('Failed to purge application data:', e);
+      throw new Error('Failed to delete stored application data');
+    }
+  }
 }

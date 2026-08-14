@@ -3,6 +3,7 @@ import { DEFAULT_SONGS } from '../data/songSeedData';
 import { getManilaTodayString, getManilaNowISO } from '../utils/dateUtils';
 import { isFirstRegularServiceOfMonth, getLastRegularSchedulesOfPreviousMonth } from '../utils/scheduleUtils';
 import { isSpecialEvent, isFirstWeekOfMonth, getLastWeekOfPreviousMonthRange } from '../utils/recommendationUtils';
+import { sanitizeSongLanguage, detectSongLanguage } from '../utils/languageUtils';
 
 const SONGS_STORAGE_KEY = 'wwcf_songs_v1';
 
@@ -79,7 +80,27 @@ export class SongService {
       if (data) {
         const parsed = JSON.parse(data);
         if (Array.isArray(parsed)) {
-          return parsed;
+          let hasMigrationUpdates = false;
+          const sanitized = parsed.map((s: Song) => {
+            const rawLang = s.language || '';
+            if (rawLang.toLowerCase() === 'cebuano') {
+              hasMigrationUpdates = true;
+              const detected = detectSongLanguage(s.title, s.lyrics);
+              return {
+                ...s,
+                language: detected.confidence === 'high' ? detected.language : 'Other / Unknown'
+              };
+            }
+            return {
+              ...s,
+              language: sanitizeSongLanguage(s.language)
+            };
+          });
+
+          if (hasMigrationUpdates) {
+            localStorage.setItem(SONGS_STORAGE_KEY, JSON.stringify(sanitized));
+          }
+          return sanitized;
         }
       }
       return [];
@@ -96,6 +117,8 @@ export class SongService {
     const songs = await this.getSongs();
     let savedSong: Song;
 
+    const sanitizedLang = sanitizeSongLanguage(songData.language || 'English');
+
     if (songData.id) {
       // Update existing
       const index = songs.findIndex((s) => s.id === songData.id);
@@ -111,7 +134,7 @@ export class SongService {
         timeSignature: songData.timeSignature || '',
         duration: songData.duration || '',
         releaseYear: songData.releaseYear || '',
-        language: songData.language || 'English',
+        language: sanitizedLang,
         ccliNumber: songData.ccliNumber || '',
         youtubeUrl: songData.youtubeUrl || '',
         youtubeId: songData.youtubeId || (songData.youtubeUrl ? extractYouTubeId(songData.youtubeUrl) || undefined : undefined),
@@ -161,7 +184,7 @@ export class SongService {
         timeSignature: songData.timeSignature || '',
         duration: songData.duration || '',
         releaseYear: songData.releaseYear || '',
-        language: songData.language || 'English',
+        language: sanitizedLang,
         ccliNumber: songData.ccliNumber || '',
         youtubeUrl: songData.youtubeUrl || (ytId ? `https://www.youtube.com/watch?v=${ytId}` : ''),
         youtubeId: ytId,

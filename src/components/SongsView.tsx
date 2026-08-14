@@ -3,12 +3,14 @@ import { Song, Schedule, SongCategory, SongFamily, SongRelationshipType } from '
 import { SongService } from '../services/songService';
 import { SongFamilyService } from '../services/songFamilyService';
 import { detectPotentialSongFamilies, PotentialFamilySuggestion } from '../utils/songFamilyUtils';
+import { sanitizeSongLanguage } from '../utils/languageUtils';
 import { getManilaTodayString } from '../utils/dateUtils';
 import { useMultiSelect } from '../hooks/useMultiSelect';
 import { SongFormModal } from './SongFormModal';
 import { PlaylistImportModal } from './PlaylistImportModal';
 import { SongFamilyModal } from './SongFamilyModal';
 import { SongFamilySuggestionsModal } from './SongFamilySuggestionsModal';
+import { GetMetadataModal } from './GetMetadataModal';
 import { Modal } from './Modal';
 import {
   Music,
@@ -64,6 +66,10 @@ export const SongsView: React.FC<SongsViewProps> = ({
   const [familyToEdit, setFamilyToEdit] = useState<SongFamily | null>(null);
   const [isSuggestionsModalOpen, setIsSuggestionsModalOpen] = useState(false);
   const [familySuggestions, setFamilySuggestions] = useState<PotentialFamilySuggestion[]>([]);
+
+  // Get Metadata state
+  const [metadataSong, setMetadataSong] = useState<Song | null>(null);
+  const [isMetadataModalOpen, setIsMetadataModalOpen] = useState(false);
 
   const loadFamilies = async () => {
     try {
@@ -426,7 +432,7 @@ export const SongsView: React.FC<SongsViewProps> = ({
             <option value="all">All Languages</option>
             <option value="English">English</option>
             <option value="Tagalog">Tagalog</option>
-            <option value="Cebuano">Cebuano</option>
+            <option value="Other / Unknown">Other / Unknown</option>
           </select>
         </div>
       </div>
@@ -456,6 +462,42 @@ export const SongsView: React.FC<SongsViewProps> = ({
 
         {selectedCount > 0 && (
           <div className="flex flex-wrap items-center gap-2">
+            {selectedCount === 1 && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const singleSong = songs.find((s) => selectedIds.has(s.id));
+                    if (singleSong) {
+                      setMetadataSong(singleSong);
+                      setIsMetadataModalOpen(true);
+                    }
+                  }}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/80 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 border border-indigo-200 dark:border-indigo-800 rounded-lg transition-colors cursor-pointer shadow-xs"
+                  title="Get Metadata from YouTube, Spotify, Apple Music, LRCLIB"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                  <span>Get Metadata</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    const singleSong = songs.find((s) => selectedIds.has(s.id));
+                    if (singleSong) {
+                      setEditingSong(singleSong);
+                      setIsModalOpen(true);
+                    }
+                  }}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-700 hover:bg-slate-100 dark:hover:bg-slate-600 border border-slate-200 dark:border-slate-600 rounded-lg transition-colors cursor-pointer shadow-xs"
+                  title="Edit Song"
+                >
+                  <Edit2 className="w-3.5 h-3.5" />
+                  <span>Edit Song</span>
+                </button>
+              </>
+            )}
+
             <button
               onClick={() => handleRequestBulkCategoryChange('praise')}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/80 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 border border-emerald-200 dark:border-emerald-800 rounded-lg transition-colors cursor-pointer shadow-xs"
@@ -583,46 +625,40 @@ export const SongsView: React.FC<SongsViewProps> = ({
 
                     <div className="min-w-0 flex-1 space-y-1">
                       <div className="flex items-start justify-between gap-2">
-                        <h3 className="text-sm font-extrabold text-slate-900 dark:text-slate-100 truncate">
-                          {song.title}
-                        </h3>
-                        
-                        {/* Action buttons */}
-                        <div className="flex items-center gap-1 shrink-0">
-                          {song.youtubeUrl && (
-                            <a
-                              href={song.youtubeUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="p-1.5 text-slate-400 hover:text-red-600 rounded-lg transition-colors cursor-pointer"
-                              title="Watch on YouTube"
-                            >
-                              <Youtube className="w-4 h-4" />
-                            </a>
-                          )}
-                          <button
-                            onClick={() => {
-                              setEditingSong(song);
-                              setIsModalOpen(true);
-                            }}
-                            className="p-1.5 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 rounded-lg transition-colors cursor-pointer"
-                            title="Edit Song"
-                          >
-                            <Edit2 className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={() => handleRequestDelete([song])}
-                            className="p-1.5 text-slate-400 hover:text-red-600 rounded-lg transition-colors cursor-pointer"
-                            title="Delete Song"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
+                        <div className="min-w-0 flex-1">
+                          <h3 className="text-sm font-extrabold text-slate-900 dark:text-slate-100 truncate">
+                            {song.title}
+                          </h3>
+                          <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 truncate mt-0.5">
+                            {song.artist || 'Unknown Artist'}
+                          </p>
                         </div>
+                        
+                        {/* Dedicated Compact YouTube Access Button */}
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (song.youtubeUrl && song.youtubeUrl.trim()) {
+                              window.open(song.youtubeUrl.trim(), '_blank', 'noopener,noreferrer');
+                            } else {
+                              showToast('No YouTube link available for this song.', 'info');
+                            }
+                          }}
+                          className={`p-1.5 rounded-lg border transition-all cursor-pointer flex items-center justify-center shrink-0 ${
+                            song.youtubeUrl && song.youtubeUrl.trim()
+                              ? 'bg-red-50 dark:bg-red-950/40 border-red-200/80 dark:border-red-900/60 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/60 shadow-2xs hover:scale-105'
+                              : 'bg-slate-100/80 dark:bg-slate-800/80 border-slate-200 dark:border-slate-700 text-slate-400 dark:text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-700'
+                          }`}
+                          title={
+                            song.youtubeUrl && song.youtubeUrl.trim()
+                              ? 'Open on YouTube / YouTube Music'
+                              : 'No YouTube link available for this song'
+                          }
+                        >
+                          <Youtube className="w-4 h-4" />
+                        </button>
                       </div>
-
-                      <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 truncate">
-                        {song.artist || 'Unknown Artist'}
-                      </p>
 
                       {/* Metadata Pill Tags */}
                       <div className="flex flex-wrap items-center gap-1.5 pt-1">
@@ -838,6 +874,21 @@ export const SongsView: React.FC<SongsViewProps> = ({
         onApplied={() => {
           loadFamilies();
           onRefreshSongs();
+        }}
+        showToast={showToast}
+      />
+
+      {/* Get Metadata Modal */}
+      <GetMetadataModal
+        isOpen={isMetadataModalOpen}
+        song={metadataSong}
+        onClose={() => {
+          setIsMetadataModalOpen(false);
+          setMetadataSong(null);
+        }}
+        onMetadataApplied={() => {
+          onRefreshSongs();
+          loadFamilies();
         }}
         showToast={showToast}
       />

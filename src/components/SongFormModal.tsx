@@ -536,9 +536,7 @@ export const SongFormModal: React.FC<SongFormModalProps> = ({
                 >
                   <option value="English">English</option>
                   <option value="Tagalog">Tagalog</option>
-                  <option value="Cebuano">Cebuano</option>
-                  <option value="Bilingual">Bilingual</option>
-                  <option value="Other">Other</option>
+                  <option value="Other / Unknown">Other / Unknown</option>
                 </select>
               </div>
 

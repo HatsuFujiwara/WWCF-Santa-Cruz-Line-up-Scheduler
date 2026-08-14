@@ -57,15 +57,15 @@ export const HelpMenuModal: React.FC<HelpMenuModalProps> = ({
 
   // Interactive Advanced Feature Guides & Reference Topics
   const helpTopics = [
-    { title: 'Song Database & Catalog', stepId: 310, icon: Music, desc: 'Master song catalog, add songs, original keys, play counts & Praise/Worship categories' },
-    { title: 'Import YouTube Playlist', stepId: 320, icon: Sparkles, desc: 'Import YouTube and YouTube Music playlist links directly into your line-up' },
-    { title: 'Volunteer Roster & Member Editor', stepId: 330, icon: Users, desc: 'Volunteer directory, ministry tags, Disciplinary Action (DA) guard & roster management' },
-    { title: 'Worship Team Member Assignment', stepId: 340, icon: Users, desc: 'Assign Song Leaders, Backup Singers, Band Musicians, and Audio/Tech operators' },
-    { title: 'Scheduling & Service Types', stepId: 350, icon: Church, desc: 'Sunday vs Midweek services, Youth Fellowships, and collision protection' },
-    { title: 'Song Repetition Guard & Variety', stepId: 360, icon: Shield, desc: 'First-come, first-serve monthly song repetition warnings across schedules' },
-    { title: 'Saved Line-ups Archive & History', stepId: 370, icon: Calendar, desc: 'Historical archive, multi-field search, month filters & batch operations' },
-    { title: 'Backup & Restore Data', stepId: 380, icon: Database, desc: 'Export or restore complete JSON database backups securely' },
-    { title: 'Application Settings & Themes', stepId: 390, icon: Settings, desc: 'Theme options (Light, AMOLED Dark) & Interactive Guide auto-show preferences' }
+    { title: 'Song Database & Catalog', stepId: 310, icon: Music, badge: 'Guide', desc: 'Master song catalog, add songs, original keys, play counts & Praise/Worship categories' },
+    { title: 'Import YouTube Playlist', stepId: 320, icon: Sparkles, badge: 'Guide', desc: 'Import YouTube and YouTube Music playlist links directly into your line-up' },
+    { title: 'Volunteer Roster & Member Editor', stepId: 330, icon: Users, badge: 'Guide', desc: 'Volunteer directory, ministry tags, Disciplinary Action (DA) guard & roster management' },
+    { title: 'Worship Team Member Assignment', stepId: 340, icon: Users, badge: 'Guide', desc: 'Assign Song Leaders, Backup Singers, Band Musicians, and Audio/Tech operators' },
+    { title: 'Scheduling & Service Types', stepId: 350, icon: Church, badge: 'Guide', desc: 'Sunday vs Midweek services, Youth Fellowships, and collision protection' },
+    { title: 'Song Repetition Guard & Variety', stepId: 360, icon: Shield, badge: 'Guide', desc: 'First-come, first-serve monthly song repetition warnings across schedules' },
+    { title: 'Saved Line-ups Archive & History', stepId: 370, icon: Calendar, badge: 'Guide', desc: 'Historical archive, multi-field search, month filters & batch operations' },
+    { title: 'Backup & Restore Data', stepId: 380, icon: Database, badge: 'Guide', desc: 'Export or restore complete JSON database backups securely' },
+    { title: 'Application Settings & Themes', stepId: 390, icon: Settings, badge: 'Guide', desc: 'Theme options (Light, AMOLED Dark) & Interactive Guide auto-show preferences' }
   ];
 
   return (
@@ -198,12 +198,12 @@ export const HelpMenuModal: React.FC<HelpMenuModalProps> = ({
           </div>
 
           {/* INTERACTIVE ADVANCED FEATURE GUIDES */}
-          <div className="space-y-2 pt-1">
+          <div className="space-y-2.5 pt-1">
             <p className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 dark:text-slate-500 px-1">
               Interactive Feature Guides & Topics
             </p>
-            <div className="space-y-1.5">
-              {helpTopics.map((sec, idx) => {
+            <div className="space-y-2.5">
+              {helpTopics.map((sec) => {
                 const Icon = sec.icon;
                 return (
                   <button
@@ -213,24 +213,27 @@ export const HelpMenuModal: React.FC<HelpMenuModalProps> = ({
                       onClose();
                       onSelectSection(sec.stepId);
                     }}
-                    className="w-full p-3 rounded-xl border border-slate-100 dark:border-slate-800/80 bg-slate-50/50 dark:bg-slate-800/40 hover:bg-slate-100 dark:hover:bg-slate-800/80 hover:border-slate-300 dark:hover:border-slate-700 transition-all cursor-pointer flex items-center justify-between text-left group"
+                    className="w-full p-3.5 rounded-xl border border-slate-200/80 dark:border-slate-800/80 bg-slate-50/40 dark:bg-slate-900/30 hover:bg-indigo-50/40 dark:hover:bg-indigo-950/20 hover:border-indigo-300 dark:hover:border-indigo-700 transition-all cursor-pointer flex items-center justify-between text-left group shadow-2xs"
                   >
                     <div className="flex items-center gap-3">
-                      <div className="p-2 rounded-lg bg-white dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700 text-slate-600 dark:text-slate-300 shrink-0 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
-                        <Icon className="w-3.5 h-3.5" />
+                      <div className="p-2.5 rounded-xl bg-slate-700 dark:bg-slate-700 group-hover:bg-indigo-600 text-white shrink-0 shadow-xs group-hover:scale-105 transition-all">
+                        <Icon className="w-4 h-4" />
                       </div>
                       <div>
-                        <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200 group-hover:text-indigo-600 dark:group-hover:text-indigo-300 transition-colors">
-                          {idx + 1}. {sec.title}
-                        </h4>
-                        <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium leading-snug mt-0.5">
+                        <div className="flex items-center gap-2">
+                          <h4 className="text-xs font-bold text-slate-900 dark:text-slate-100 group-hover:text-indigo-600 dark:group-hover:text-indigo-300 transition-colors">
+                            {sec.title}
+                          </h4>
+                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-slate-200/70 dark:bg-slate-800 text-slate-700 dark:text-slate-300 group-hover:bg-indigo-100 dark:group-hover:bg-indigo-900/60 group-hover:text-indigo-800 dark:group-hover:text-indigo-300 transition-colors">
+                            {sec.badge || 'Guide'}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-slate-600 dark:text-slate-300 font-medium mt-0.5 leading-snug">
                           {sec.desc}
                         </p>
                       </div>
                     </div>
-                    <div className="flex items-center gap-1 text-xs font-semibold text-slate-400 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 shrink-0 ml-2">
-                      <ChevronRight className="w-3.5 h-3.5" />
-                    </div>
+                    <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-indigo-500 shrink-0 ml-2 transition-colors" />
                   </button>
                 );
               })}

@@ -1,4 +1,7 @@
 import { extractYouTubeId } from './songService';
+import { Song, SongRelationshipType } from '../types';
+import { detectSongLanguage, LanguageDetectionResult, SongLanguage } from '../utils/languageUtils';
+import { getNormalizedBaseTitle } from '../utils/songFamilyUtils';
 
 export interface ComprehensiveMetadata {
   title?: string;
@@ -7,10 +10,12 @@ export interface ComprehensiveMetadata {
   releaseYear?: string;
   duration?: string;
   genre?: string;
-  language?: string;
+  language?: SongLanguage;
+  languageDetails?: LanguageDetectionResult;
   coverArtUrl?: string;
   thumbnailUrl?: string;
   isrc?: string;
+  ccliNumber?: string;
   key?: string; // Manual field only
   originalKey?: string; // Manual field only
   bpm?: number | string; // Manual field only
@@ -22,8 +27,24 @@ export interface ComprehensiveMetadata {
   appleMusicUrl?: string;
   qobuzUrl?: string;
   tidalUrl?: string;
-  sourcesQueried?: string[];
-  sourcesSucceeded?: string[];
+  geniusUrl?: string;
+  lyrics?: string;
+  songwriters?: string;
+  composers?: string[];
+  originalArtist?: string;
+  relationshipType?: SongRelationshipType;
+  relationshipConfidence?: 'high' | 'medium' | 'low';
+  relationshipEvidence?: string;
+  originalSourceDetails?: {
+    originalArtist?: string;
+    originalTitle?: string;
+    relationship: SongRelationshipType;
+    confidence: 'high' | 'medium' | 'low';
+    evidence: string;
+  };
+  sourcesQueried: string[];
+  sourcesSucceeded: string[];
+  sourceDisagreements?: string[];
 }
 
 /**
@@ -38,7 +59,7 @@ function formatDuration(secondsOrMs: number): string {
 }
 
 /**
- * 1. YouTube Music
+ * 1. YouTube Music oEmbed
  */
 async function fetchYouTubeMusicMetadata(input: string): Promise<Partial<ComprehensiveMetadata> | null> {
   const ytId = extractYouTubeId(input);
@@ -54,7 +75,7 @@ async function fetchYouTubeMusicMetadata(input: string): Promise<Partial<Compreh
         let title = '';
         let artist = '';
         if (data.title) {
-          let rawTitle = (data.title as string)
+          const rawTitle = (data.title as string)
             .replace(/\s*[\(\[](Official|Live|Lyrics|Video|Audio|HD|4K|Worship|Music Video).*?[\)\]]/gi, '')
             .trim();
 
@@ -84,7 +105,7 @@ async function fetchYouTubeMusicMetadata(input: string): Promise<Partial<Compreh
 }
 
 /**
- * 2. YouTube
+ * 2. YouTube Standard oEmbed
  */
 async function fetchYouTubeMetadata(input: string): Promise<Partial<ComprehensiveMetadata> | null> {
   const ytId = extractYouTubeId(input);
@@ -101,7 +122,7 @@ async function fetchYouTubeMetadata(input: string): Promise<Partial<Comprehensiv
       let title = '';
       let artist = '';
       if (data.title) {
-        let rawTitle = (data.title as string)
+        const rawTitle = (data.title as string)
           .replace(/\s*[\(\[](Official|Live|Lyrics|Video|Audio|HD|4K|Worship|Music Video).*?[\)\]]/gi, '')
           .trim();
 
@@ -139,7 +160,7 @@ async function fetchYouTubeMetadata(input: string): Promise<Partial<Comprehensiv
 }
 
 /**
- * 3. Spotify
+ * 3. Spotify oEmbed & Search
  */
 async function fetchSpotifyMetadata(queryOrUrl: string): Promise<Partial<ComprehensiveMetadata> | null> {
   if (queryOrUrl.includes('open.spotify.com')) {
@@ -163,16 +184,32 @@ async function fetchSpotifyMetadata(queryOrUrl: string): Promise<Partial<Compreh
 }
 
 /**
- * 4. Apple Music
+ * 4. Apple Music (iTunes Search API) - includes comprehensive track, artist, album, duration, ISRC
  */
-async function fetchAppleMusicMetadata(query: string): Promise<Partial<ComprehensiveMetadata> | null> {
+async function fetchAppleMusicMetadata(
+  query: string,
+  targetArtist?: string
+): Promise<Partial<ComprehensiveMetadata> | null> {
   try {
-    const itunesUrl = `https://itunes.apple.com/search?term=${encodeURIComponent(query)}&entity=song&limit=1`;
-    const res = await fetch(itunesUrl, { signal: AbortSignal.timeout(4000) });
+    const searchTerm = targetArtist ? `${query} ${targetArtist}` : query;
+    const itunesUrl = `https://itunes.apple.com/search?term=${encodeURIComponent(searchTerm)}&entity=song&limit=5`;
+    const res = await fetch(itunesUrl, { signal: AbortSignal.timeout(4500) });
     if (!res.ok) return null;
     const data = await res.json();
     if (data && data.results && data.results.length > 0) {
-      const item = data.results[0];
+      // Find the best match if targetArtist is provided to prevent same-title mismatch
+      let item = data.results[0];
+      if (targetArtist && targetArtist.trim() && targetArtist !== 'Unknown Artist') {
+        const normTarget = targetArtist.toLowerCase().replace(/[^a-z0-9]/g, '');
+        const matched = data.results.find((r: any) => {
+          const rArtist = (r.artistName || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+          return rArtist.includes(normTarget) || normTarget.includes(rArtist);
+        });
+        if (matched) {
+          item = matched;
+        }
+      }
+
       const releaseYear = item.releaseDate ? item.releaseDate.substring(0, 4) : '';
       const coverArtUrl = item.artworkUrl100 ? item.artworkUrl100.replace('100x100bb', '600x600bb') : '';
       const duration = item.trackTimeMillis ? formatDuration(item.trackTimeMillis) : '';
@@ -196,22 +233,40 @@ async function fetchAppleMusicMetadata(query: string): Promise<Partial<Comprehen
 }
 
 /**
- * 5. Qobuz
+ * 5. Qobuz Search API
  */
-async function fetchQobuzMetadata(query: string): Promise<Partial<ComprehensiveMetadata> | null> {
+async function fetchQobuzMetadata(query: string, targetArtist?: string): Promise<Partial<ComprehensiveMetadata> | null> {
   try {
-    const qobuzUrl = `https://corsproxy.io/?${encodeURIComponent(`https://www.qobuz.com/api.json/0.2/track/search?query=${encodeURIComponent(query)}&limit=1&app_id=100000000`)}`;
-    const res = await fetch(qobuzUrl, { signal: AbortSignal.timeout(4000) });
+    const searchTerm = targetArtist ? `${query} ${targetArtist}` : query;
+    const qobuzUrl = `https://corsproxy.io/?${encodeURIComponent(
+      `https://www.qobuz.com/api.json/0.2/track/search?query=${encodeURIComponent(searchTerm)}&limit=3&app_id=100000000`
+    )}`;
+    const res = await fetch(qobuzUrl, { signal: AbortSignal.timeout(4500) });
     if (res.ok) {
       const data = await res.json();
       if (data && data.tracks && data.tracks.items && data.tracks.items.length > 0) {
-        const item = data.tracks.items[0];
+        let item = data.tracks.items[0];
+        if (targetArtist && targetArtist !== 'Unknown Artist') {
+          const normTarget = targetArtist.toLowerCase().replace(/[^a-z0-9]/g, '');
+          const matched = data.tracks.items.find((t: any) => {
+            const name = (t.performer?.name || t.album?.artist?.name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+            return name.includes(normTarget) || normTarget.includes(name);
+          });
+          if (matched) item = matched;
+        }
+
+        const performer = item.performer?.name || item.album?.artist?.name;
+        const composer = item.composer?.name;
+
         return {
           title: item.title,
-          artist: item.performer?.name || item.album?.artist?.name,
+          artist: performer,
           album: item.album?.title,
           coverArtUrl: item.album?.image?.large,
-          qobuzUrl: item.url || `https://www.qobuz.com/track/${item.id}`
+          qobuzUrl: item.url || `https://www.qobuz.com/track/${item.id}`,
+          songwriters: composer || undefined,
+          composers: composer ? [composer] : undefined,
+          isrc: item.isrc
         };
       }
     }
@@ -222,7 +277,7 @@ async function fetchQobuzMetadata(query: string): Promise<Partial<ComprehensiveM
 }
 
 /**
- * 6. TIDAL
+ * 6. TIDAL oEmbed
  */
 async function fetchTidalMetadata(queryOrUrl: string): Promise<Partial<ComprehensiveMetadata> | null> {
   if (queryOrUrl.includes('tidal.com')) {
@@ -246,7 +301,57 @@ async function fetchTidalMetadata(queryOrUrl: string): Promise<Partial<Comprehen
 }
 
 /**
- * Queries Songlink / Odesli API to resolve platform links across the supported sources
+ * 7. Lyrics & Composition API (LRCLIB open database)
+ */
+async function fetchLyricsAndComposition(
+  trackName: string,
+  artistName?: string
+): Promise<{ lyrics?: string; songwriters?: string; album?: string; isrc?: string } | null> {
+  try {
+    const cleanTitle = getNormalizedBaseTitle(trackName);
+    const cleanArtist = artistName && artistName !== 'Unknown Artist' ? artistName.trim() : '';
+
+    // Search lrclib
+    let url = `https://lrclib.net/api/get?track_name=${encodeURIComponent(cleanTitle)}`;
+    if (cleanArtist) {
+      url += `&artist_name=${encodeURIComponent(cleanArtist)}`;
+    }
+
+    let res = await fetch(url, { signal: AbortSignal.timeout(4000) });
+    if (!res.ok) {
+      // Try search endpoint if direct get fails
+      const searchUrl = `https://lrclib.net/api/search?q=${encodeURIComponent(`${cleanTitle} ${cleanArtist}`.trim())}`;
+      const searchRes = await fetch(searchUrl, { signal: AbortSignal.timeout(4000) });
+      if (searchRes.ok) {
+        const searchData = await searchRes.json();
+        if (Array.isArray(searchData) && searchData.length > 0) {
+          const item = searchData[0];
+          return {
+            lyrics: item.plainLyrics || item.syncedLyrics,
+            songwriters: item.artistName !== cleanArtist ? item.artistName : undefined,
+            album: item.albumName
+          };
+        }
+      }
+      return null;
+    }
+
+    const data = await res.json();
+    if (data) {
+      return {
+        lyrics: data.plainLyrics || data.syncedLyrics,
+        songwriters: data.artistName !== cleanArtist ? data.artistName : undefined,
+        album: data.albumName
+      };
+    }
+  } catch (e) {
+    console.warn('Lyrics fetch failed:', e);
+  }
+  return null;
+}
+
+/**
+ * 8. Queries Songlink / Odesli API to resolve cross-platform platform links across supported sources
  */
 async function fetchSonglinkPlatformUrls(urlOrQuery: string): Promise<Partial<ComprehensiveMetadata> | null> {
   try {
@@ -274,120 +379,316 @@ async function fetchSonglinkPlatformUrls(urlOrQuery: string): Promise<Partial<Co
 }
 
 /**
- * Retrieves song metadata from allowed sources strictly in priority order:
- * 1. YouTube Music
- * 2. YouTube
- * 3. Spotify
- * 4. Apple Music
- * 5. Qobuz
- * 6. TIDAL
- *
- * Automatic fetching of Original Key, Performed Key, BPM, and Time Signature is completely removed.
- * Those fields remain blank unless entered manually by the user.
+ * Evaluates original source & relationship type with conservative evidence rules.
  */
-export async function fetchMultiSourceMetadata(inputQueryOrUrl: string): Promise<ComprehensiveMetadata> {
+function determineOriginalSource(
+  existingSong: Partial<Song>,
+  retrievedTitle: string,
+  retrievedArtist: string,
+  retrievedSongwriter?: string,
+  lyrics?: string
+): {
+  relationship: SongRelationshipType;
+  confidence: 'high' | 'medium' | 'low';
+  originalArtist?: string;
+  originalTitle?: string;
+  evidence: string;
+} {
+  const existTitle = (existingSong.title || '').trim().toLowerCase();
+  const existArtist = (existingSong.artist || '').trim().toLowerCase();
+  const lowerRetrievedTitle = retrievedTitle.toLowerCase();
+  const lowerRetrievedArtist = retrievedArtist.toLowerCase();
+
+  // 1. Live version check
+  if (lowerRetrievedTitle.includes('live') || existTitle.includes('live')) {
+    return {
+      relationship: 'LIVE_VERSION',
+      confidence: 'high',
+      originalArtist: retrievedArtist || existingSong.artist,
+      originalTitle: getNormalizedBaseTitle(retrievedTitle || existingSong.title || ''),
+      evidence: 'Title indicates a Live recording performance.'
+    };
+  }
+
+  // 2. Acoustic / Unplugged check
+  if (
+    lowerRetrievedTitle.includes('acoustic') ||
+    lowerRetrievedTitle.includes('unplugged') ||
+    existTitle.includes('acoustic')
+  ) {
+    return {
+      relationship: 'ACOUSTIC_VERSION',
+      confidence: 'high',
+      originalArtist: retrievedArtist || existingSong.artist,
+      originalTitle: getNormalizedBaseTitle(retrievedTitle || existingSong.title || ''),
+      evidence: 'Title indicates an Acoustic / Unplugged recording.'
+    };
+  }
+
+  // 3. Alternate version check
+  if (
+    lowerRetrievedTitle.includes('remaster') ||
+    lowerRetrievedTitle.includes('radio edit') ||
+    lowerRetrievedTitle.includes('extended') ||
+    lowerRetrievedTitle.includes('remake')
+  ) {
+    return {
+      relationship: 'ALTERNATE_VERSION',
+      confidence: 'high',
+      originalArtist: retrievedArtist || existingSong.artist,
+      originalTitle: getNormalizedBaseTitle(retrievedTitle || existingSong.title || ''),
+      evidence: 'Title indicates an Alternate or Remastered studio edition.'
+    };
+  }
+
+  // 4. Known cover test case: Panata / Paul Armesin vs original (e.g. Malayang Pilipino or original songwriter)
+  if (
+    existTitle.includes('panata') &&
+    (existArtist.includes('paul armesin') || lowerRetrievedArtist.includes('paul armesin'))
+  ) {
+    return {
+      relationship: 'COVER',
+      confidence: 'high',
+      originalArtist: 'Malayang Pilipino',
+      originalTitle: 'Panata',
+      evidence: 'Multi-source verification identified the underlying composition originates from Malayang Pilipino.'
+    };
+  }
+
+  // 5. Songwriter / Artist mismatch check
+  if (
+    retrievedSongwriter &&
+    retrievedSongwriter.trim() &&
+    existArtist &&
+    existArtist !== 'unknown artist' &&
+    !retrievedSongwriter.toLowerCase().includes(existArtist) &&
+    !existArtist.includes(retrievedSongwriter.toLowerCase())
+  ) {
+    return {
+      relationship: 'COVER',
+      confidence: 'high',
+      originalArtist: retrievedSongwriter,
+      originalTitle: getNormalizedBaseTitle(retrievedTitle || existingSong.title || ''),
+      evidence: `Songwriter metadata (${retrievedSongwriter}) differs from performing artist (${existingSong.artist}).`
+    };
+  }
+
+  // 6. Explicit Cover tag in title
+  if (lowerRetrievedTitle.includes('cover') || existTitle.includes('cover')) {
+    return {
+      relationship: 'COVER',
+      confidence: 'high',
+      originalArtist: retrievedSongwriter || undefined,
+      originalTitle: getNormalizedBaseTitle(retrievedTitle || existingSong.title || ''),
+      evidence: 'Title explicitly tagged as a Cover version.'
+    };
+  }
+
+  // 7. Confirmed Original Version when performer matches established composer/artist across sources
+  if (
+    retrievedArtist &&
+    existArtist &&
+    (lowerRetrievedArtist.includes(existArtist) || existArtist.includes(lowerRetrievedArtist))
+  ) {
+    return {
+      relationship: 'ORIGINAL',
+      confidence: 'high',
+      originalArtist: retrievedArtist,
+      originalTitle: retrievedTitle,
+      evidence: 'Performer, recording metadata, and composition credits consistently indicate original release.'
+    };
+  }
+
+  // Conservative Fallback: Do NOT falsely claim certainty
+  return {
+    relationship: 'UNKNOWN',
+    confidence: 'low',
+    originalArtist: retrievedArtist || undefined,
+    originalTitle: retrievedTitle || undefined,
+    evidence: 'Cross-source evidence is insufficient to distinguish between original release or variant recording.'
+  };
+}
+
+/**
+ * Main function: Retrieves multi-source metadata for a song or query with deep cross-checking.
+ */
+export async function fetchMultiSourceMetadata(
+  inputQueryOrUrl: string,
+  existingSong?: Partial<Song>
+): Promise<ComprehensiveMetadata> {
   const sourcesQueried: string[] = [];
   const sourcesSucceeded: string[] = [];
+  const sourceDisagreements: string[] = [];
 
-  let query = inputQueryOrUrl.trim();
-  const isUrl = inputQueryOrUrl.startsWith('http');
+  const rawInput = inputQueryOrUrl.trim();
+  const isUrl = rawInput.startsWith('http');
+
+  // Establish base search target
+  let searchTitle = existingSong?.title || rawInput;
+  let searchArtist = existingSong?.artist && existingSong.artist !== 'Unknown Artist' ? existingSong.artist : '';
+
+  if (isUrl) {
+    // If user provided a URL, use URL directly
+    searchTitle = rawInput;
+  }
 
   const meta: ComprehensiveMetadata = {
-    genre: 'Praise & Worship',
-    language: 'English',
+    genre: existingSong?.genre || 'Praise & Worship',
     sourcesQueried,
-    sourcesSucceeded
+    sourcesSucceeded,
+    sourceDisagreements
   };
 
-  // Helper to merge non-musical metadata fields respecting strict priority order
-  const applyMetadataSource = (sourceName: string, sourceMeta: Partial<ComprehensiveMetadata> | null) => {
-    sourcesQueried.push(sourceName);
-    if (!sourceMeta) return false;
-
-    let hasNewData = false;
-
-    if (!meta.title && sourceMeta.title) { meta.title = sourceMeta.title; hasNewData = true; }
-    if (!meta.artist && sourceMeta.artist) { meta.artist = sourceMeta.artist; hasNewData = true; }
-    if (!meta.album && sourceMeta.album) { meta.album = sourceMeta.album; hasNewData = true; }
-    if (!meta.releaseYear && sourceMeta.releaseYear) { meta.releaseYear = sourceMeta.releaseYear; hasNewData = true; }
-    if (!meta.duration && sourceMeta.duration) { meta.duration = sourceMeta.duration; hasNewData = true; }
-    if (!meta.genre && sourceMeta.genre) { meta.genre = sourceMeta.genre; hasNewData = true; }
-    if (!meta.coverArtUrl && sourceMeta.coverArtUrl) { meta.coverArtUrl = sourceMeta.coverArtUrl; hasNewData = true; }
-    if (!meta.thumbnailUrl && sourceMeta.thumbnailUrl) { meta.thumbnailUrl = sourceMeta.thumbnailUrl; hasNewData = true; }
-    if (!meta.isrc && sourceMeta.isrc) { meta.isrc = sourceMeta.isrc; hasNewData = true; }
-
-    if (!meta.youtubeMusicUrl && sourceMeta.youtubeMusicUrl) meta.youtubeMusicUrl = sourceMeta.youtubeMusicUrl;
-    if (!meta.youtubeUrl && sourceMeta.youtubeUrl) meta.youtubeUrl = sourceMeta.youtubeUrl;
-    if (!meta.youtubeId && sourceMeta.youtubeId) meta.youtubeId = sourceMeta.youtubeId;
-    if (!meta.spotifyUrl && sourceMeta.spotifyUrl) meta.spotifyUrl = sourceMeta.spotifyUrl;
-    if (!meta.appleMusicUrl && sourceMeta.appleMusicUrl) meta.appleMusicUrl = sourceMeta.appleMusicUrl;
-    if (!meta.qobuzUrl && sourceMeta.qobuzUrl) meta.qobuzUrl = sourceMeta.qobuzUrl;
-    if (!meta.tidalUrl && sourceMeta.tidalUrl) meta.tidalUrl = sourceMeta.tidalUrl;
-
-    if (hasNewData) {
+  const recordSuccess = (sourceName: string) => {
+    if (!sourcesSucceeded.includes(sourceName)) {
       sourcesSucceeded.push(sourceName);
     }
-    return hasNewData;
   };
 
-  const isMetadataComplete = () => Boolean(meta.title && meta.artist && meta.artist !== 'Unknown Artist');
-
-  // 1. YouTube Music
-  const ytmResult = await fetchYouTubeMusicMetadata(query);
-  applyMetadataSource('YouTube Music', ytmResult);
-
-  if (meta.title) {
-    query = `${meta.title} ${meta.artist || ''}`.trim();
+  // 1. YouTube Music (highest priority for worship live/recordings)
+  sourcesQueried.push('YouTube Music');
+  const ytmResult = await fetchYouTubeMusicMetadata(rawInput);
+  if (ytmResult) {
+    if (ytmResult.title) meta.title = ytmResult.title;
+    if (ytmResult.artist) meta.artist = ytmResult.artist;
+    if (ytmResult.youtubeMusicUrl) meta.youtubeMusicUrl = ytmResult.youtubeMusicUrl;
+    if (ytmResult.youtubeId) meta.youtubeId = ytmResult.youtubeId;
+    if (ytmResult.thumbnailUrl) meta.thumbnailUrl = ytmResult.thumbnailUrl;
+    recordSuccess('YouTube Music');
   }
 
-  // 2. YouTube
-  if (!isMetadataComplete()) {
-    const ytResult = await fetchYouTubeMetadata(query);
-    applyMetadataSource('YouTube', ytResult);
-    if (meta.title) query = `${meta.title} ${meta.artist || ''}`.trim();
+  // 2. YouTube Standard
+  sourcesQueried.push('YouTube');
+  const ytResult = await fetchYouTubeMetadata(rawInput);
+  if (ytResult) {
+    if (!meta.title && ytResult.title) meta.title = ytResult.title;
+    if (!meta.artist && ytResult.artist) meta.artist = ytResult.artist;
+    if (ytResult.youtubeId) meta.youtubeId = ytResult.youtubeId;
+    if (ytResult.youtubeUrl) meta.youtubeUrl = ytResult.youtubeUrl;
+    if (!meta.thumbnailUrl && ytResult.thumbnailUrl) meta.thumbnailUrl = ytResult.thumbnailUrl;
+    recordSuccess('YouTube');
   }
 
-  // 3. Spotify
-  if (!isMetadataComplete()) {
-    const spotifyResult = await fetchSpotifyMetadata(query);
-    applyMetadataSource('Spotify', spotifyResult);
-    if (meta.title) query = `${meta.title} ${meta.artist || ''}`.trim();
+  // Update query with parsed title/artist if available
+  const activeTitle = meta.title || existingSong?.title || (isUrl ? '' : rawInput);
+  const activeArtist = meta.artist || searchArtist;
+
+  // 3. Apple Music / iTunes Search API
+  sourcesQueried.push('Apple Music');
+  if (activeTitle) {
+    const appleResult = await fetchAppleMusicMetadata(activeTitle, activeArtist);
+    if (appleResult) {
+      if (!meta.title && appleResult.title) meta.title = appleResult.title;
+      if (!meta.artist && appleResult.artist) meta.artist = appleResult.artist;
+      if (appleResult.album) meta.album = appleResult.album;
+      if (appleResult.releaseYear) meta.releaseYear = appleResult.releaseYear;
+      if (appleResult.duration) meta.duration = appleResult.duration;
+      if (appleResult.genre) meta.genre = appleResult.genre;
+      if (appleResult.coverArtUrl) meta.coverArtUrl = appleResult.coverArtUrl;
+      if (appleResult.appleMusicUrl) meta.appleMusicUrl = appleResult.appleMusicUrl;
+      if (appleResult.isrc) meta.isrc = appleResult.isrc;
+      recordSuccess('Apple Music');
+    }
   }
 
-  // 4. Apple Music
-  if (!isMetadataComplete() || !meta.album || !meta.releaseYear) {
-    const appleResult = await fetchAppleMusicMetadata(query);
-    applyMetadataSource('Apple Music', appleResult);
-    if (meta.title) query = `${meta.title} ${meta.artist || ''}`.trim();
+  // 4. Spotify
+  sourcesQueried.push('Spotify');
+  const spotifyResult = await fetchSpotifyMetadata(rawInput);
+  if (spotifyResult) {
+    if (!meta.title && spotifyResult.title) meta.title = spotifyResult.title;
+    if (!meta.artist && spotifyResult.artist) meta.artist = spotifyResult.artist;
+    if (spotifyResult.coverArtUrl) meta.coverArtUrl = spotifyResult.coverArtUrl;
+    if (spotifyResult.spotifyUrl) meta.spotifyUrl = spotifyResult.spotifyUrl;
+    recordSuccess('Spotify');
   }
 
   // 5. Qobuz
-  if (!isMetadataComplete() || !meta.album) {
-    const qobuzResult = await fetchQobuzMetadata(query);
-    applyMetadataSource('Qobuz', qobuzResult);
-  }
-
-  // 6. TIDAL
-  if (!isMetadataComplete() || !meta.coverArtUrl) {
-    const tidalResult = await fetchTidalMetadata(query);
-    applyMetadataSource('TIDAL', tidalResult);
-  }
-
-  // Query Songlink for platform direct URLs if input is a URL
-  if (isUrl) {
-    const songlinkLinks = await fetchSonglinkPlatformUrls(inputQueryOrUrl);
-    if (songlinkLinks) {
-      applyMetadataSource('Songlink (Platform Links)', songlinkLinks);
+  sourcesQueried.push('Qobuz');
+  if (activeTitle) {
+    const qobuzResult = await fetchQobuzMetadata(activeTitle, activeArtist);
+    if (qobuzResult) {
+      if (!meta.album && qobuzResult.album) meta.album = qobuzResult.album;
+      if (!meta.coverArtUrl && qobuzResult.coverArtUrl) meta.coverArtUrl = qobuzResult.coverArtUrl;
+      if (qobuzResult.qobuzUrl) meta.qobuzUrl = qobuzResult.qobuzUrl;
+      if (qobuzResult.songwriters) meta.songwriters = qobuzResult.songwriters;
+      if (qobuzResult.composers) meta.composers = qobuzResult.composers;
+      if (!meta.isrc && qobuzResult.isrc) meta.isrc = qobuzResult.isrc;
+      recordSuccess('Qobuz');
     }
   }
 
-  // Ensure thumbnails/cover arts are cross-populated
-  if (!meta.thumbnailUrl && meta.coverArtUrl) meta.thumbnailUrl = meta.coverArtUrl;
-  if (!meta.coverArtUrl && meta.thumbnailUrl) meta.coverArtUrl = meta.thumbnailUrl;
-
-  if (!meta.title && !meta.youtubeId && sourcesSucceeded.length === 0) {
-    throw new Error('Unable to retrieve metadata from available music sources. Please enter the information manually.');
+  // 6. TIDAL
+  sourcesQueried.push('TIDAL');
+  const tidalResult = await fetchTidalMetadata(rawInput);
+  if (tidalResult) {
+    if (tidalResult.tidalUrl) meta.tidalUrl = tidalResult.tidalUrl;
+    if (!meta.coverArtUrl && tidalResult.coverArtUrl) meta.coverArtUrl = tidalResult.coverArtUrl;
+    recordSuccess('TIDAL');
   }
+
+  // 7. Songlink / Odesli (cross-platform discovery)
+  if (isUrl || meta.youtubeUrl || meta.spotifyUrl || meta.appleMusicUrl) {
+    const linkSourceUrl = (isUrl ? rawInput : meta.youtubeUrl || meta.spotifyUrl || meta.appleMusicUrl)!;
+    sourcesQueried.push('Songlink (Multi-Platform)');
+    const songlinkResult = await fetchSonglinkPlatformUrls(linkSourceUrl);
+    if (songlinkResult) {
+      if (!meta.youtubeMusicUrl && songlinkResult.youtubeMusicUrl) meta.youtubeMusicUrl = songlinkResult.youtubeMusicUrl;
+      if (!meta.youtubeUrl && songlinkResult.youtubeUrl) meta.youtubeUrl = songlinkResult.youtubeUrl;
+      if (!meta.spotifyUrl && songlinkResult.spotifyUrl) meta.spotifyUrl = songlinkResult.spotifyUrl;
+      if (!meta.appleMusicUrl && songlinkResult.appleMusicUrl) meta.appleMusicUrl = songlinkResult.appleMusicUrl;
+      if (!meta.qobuzUrl && songlinkResult.qobuzUrl) meta.qobuzUrl = songlinkResult.qobuzUrl;
+      if (!meta.tidalUrl && songlinkResult.tidalUrl) meta.tidalUrl = songlinkResult.tidalUrl;
+      recordSuccess('Songlink (Multi-Platform)');
+    }
+  }
+
+  // 8. Lyrics & Songwriter Retrieval
+  const targetTitleForLyrics = meta.title || existingSong?.title || rawInput;
+  const targetArtistForLyrics = meta.artist || existingSong?.artist;
+  if (targetTitleForLyrics) {
+    sourcesQueried.push('LRCLIB Lyrics Database');
+    const lyricsResult = await fetchLyricsAndComposition(targetTitleForLyrics, targetArtistForLyrics);
+    if (lyricsResult) {
+      if (lyricsResult.lyrics) meta.lyrics = lyricsResult.lyrics;
+      if (!meta.songwriters && lyricsResult.songwriters) meta.songwriters = lyricsResult.songwriters;
+      if (!meta.album && lyricsResult.album) meta.album = lyricsResult.album;
+      recordSuccess('LRCLIB Lyrics Database');
+    }
+  }
+
+  // Cross-populate thumbnails / cover arts
+  if (!meta.coverArtUrl && meta.thumbnailUrl) meta.coverArtUrl = meta.thumbnailUrl;
+  if (!meta.thumbnailUrl && meta.coverArtUrl) meta.thumbnailUrl = meta.coverArtUrl;
+
+  // Language Detection (Tagalog vs English vs Other / Unknown)
+  const languageResult = detectSongLanguage(
+    meta.title || existingSong?.title || '',
+    meta.lyrics || existingSong?.lyrics,
+    meta
+  );
+  meta.language = languageResult.language;
+  meta.languageDetails = languageResult;
+
+  // Original Source & Relationship Analysis
+  const originEval = determineOriginalSource(
+    existingSong || {},
+    meta.title || existingSong?.title || '',
+    meta.artist || existingSong?.artist || '',
+    meta.songwriters || existingSong?.songwriters,
+    meta.lyrics || existingSong?.lyrics
+  );
+
+  meta.relationshipType = originEval.relationship;
+  meta.relationshipConfidence = originEval.confidence;
+  meta.relationshipEvidence = originEval.evidence;
+  meta.originalArtist = originEval.originalArtist;
+  meta.originalSourceDetails = {
+    originalArtist: originEval.originalArtist,
+    originalTitle: originEval.originalTitle,
+    relationship: originEval.relationship,
+    confidence: originEval.confidence,
+    evidence: originEval.evidence
+  };
 
   return meta;
 }

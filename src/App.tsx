@@ -19,6 +19,7 @@ import { InteractiveTourOverlay } from './components/InteractiveTourOverlay';
 import { WelcomeGuideModal } from './components/WelcomeGuideModal';
 import { NewLineupModal } from './components/NewLineupModal';
 import { TransferDataModal } from './components/TransferDataModal';
+import { DeleteAllDataModal } from './components/DeleteAllDataModal';
 import { exportLineupAsPDF, exportLineupAsPNG } from './services/exportService';
 import { sortTags } from './utils/tagUtils';
 import { getManilaNowISO, getManilaTodayString } from './utils/dateUtils';
@@ -81,7 +82,9 @@ export default function App() {
     title: string;
     message: string;
     isDanger?: boolean;
-    onConfirm: () => void;
+    confirmLabel?: string;
+    cancelLabel?: string;
+    onConfirm?: () => void;
   }>({
     isOpen: false,
     title: '',
@@ -118,6 +121,7 @@ export default function App() {
 
   // Settings, Welcome & Onboarding Modals
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isDeleteAllDataOpen, setIsDeleteAllDataOpen] = useState(false);
   const [isWelcomeModalOpen, setIsWelcomeModalOpen] = useState(false);
   const [isOnboardingOpen, setIsOnboardingOpen] = useState(false);
   const [isHelpMenuOpen, setIsHelpMenuOpen] = useState(false);
@@ -146,6 +150,16 @@ export default function App() {
     setLabels(StorageService.getLabels());
     setSchedules(StorageService.getSchedules());
     loadSongs();
+  };
+
+  const handleFreshStartReset = () => {
+    setMembers([]);
+    setLabels(StorageService.getLabelsSync());
+    setSchedules([]);
+    setSongs([]);
+    setEditingSchedule(null);
+    setIsDraftSaved(false);
+    setActiveTab('dashboard');
   };
 
   // Dark Mode Sync
@@ -527,6 +541,15 @@ export default function App() {
         }}
         onOpenBackupRestore={() => setIsBackupModalOpen(true)}
         onOpenTransferData={() => setIsTransferModalOpen(true)}
+        onOpenDeleteAllData={() => setIsDeleteAllDataOpen(true)}
+        showToast={showToast}
+      />
+
+      {/* Delete All Data / Fresh Start Modal */}
+      <DeleteAllDataModal
+        isOpen={isDeleteAllDataOpen}
+        onClose={() => setIsDeleteAllDataOpen(false)}
+        onDataDeleted={handleFreshStartReset}
         showToast={showToast}
       />
 
@@ -587,6 +610,8 @@ export default function App() {
         isOpen={modalConfig.isOpen}
         title={modalConfig.title}
         message={modalConfig.message}
+        confirmLabel={modalConfig.confirmLabel}
+        cancelLabel={modalConfig.cancelLabel}
         isDanger={modalConfig.isDanger}
         onConfirm={modalConfig.onConfirm}
         onClose={() => setModalConfig((prev) => ({ ...prev, isOpen: false }))}

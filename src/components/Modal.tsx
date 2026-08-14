@@ -8,7 +8,7 @@ interface ModalProps {
   confirmLabel?: string;
   cancelLabel?: string;
   isDanger?: boolean;
-  onConfirm: () => void;
+  onConfirm?: () => void;
   onClose: () => void;
 }
 
@@ -56,8 +56,16 @@ export const Modal: React.FC<ModalProps> = ({
           </button>
           <button
             onClick={() => {
-              onConfirm();
-              onClose();
+              if (typeof onConfirm === 'function') {
+                try {
+                  onConfirm();
+                } catch (err) {
+                  console.error('Error executing onConfirm callback:', err);
+                }
+              }
+              if (typeof onClose === 'function') {
+                onClose();
+              }
             }}
             className={`px-4 py-2 text-sm font-medium text-white rounded-xl shadow-xs transition-all ${
               isDanger

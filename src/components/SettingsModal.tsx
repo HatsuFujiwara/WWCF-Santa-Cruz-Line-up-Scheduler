@@ -12,7 +12,9 @@ import {
   Check,
   RotateCcw,
   Play,
-  QrCode
+  QrCode,
+  AlertTriangle,
+  Trash2
 } from 'lucide-react';
 
 interface SettingsModalProps {
@@ -23,6 +25,7 @@ interface SettingsModalProps {
   onOpenOnboarding: () => void;
   onOpenBackupRestore: () => void;
   onOpenTransferData?: () => void;
+  onOpenDeleteAllData?: () => void;
   showToast?: (text: string, type?: 'success' | 'danger' | 'info') => void;
 }
 
@@ -34,6 +37,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onOpenOnboarding,
   onOpenBackupRestore,
   onOpenTransferData,
+  onOpenDeleteAllData,
   showToast
 }) => {
   const [guideMode, setGuideMode] = useState<GuideAutoShowMode>('first_visit');
@@ -279,6 +283,30 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               <span>Open Backup & Restore Tool</span>
             </button>
           </div>
+
+          {/* Section: Danger Zone / Fresh Start */}
+          {onOpenDeleteAllData && (
+            <div className="p-4 rounded-xl border border-rose-200 dark:border-rose-900/60 bg-rose-50/60 dark:bg-rose-950/20 space-y-3">
+              <div className="flex items-center gap-2 text-rose-700 dark:text-rose-400 font-bold text-sm">
+                <AlertTriangle className="w-4 h-4" />
+                <span>Danger Zone: Fresh Start</span>
+              </div>
+              <p className="text-xs text-rose-800/80 dark:text-rose-300/80 leading-relaxed">
+                Permanently purge all stored members, songs, lineups, history, and application records to start completely fresh.
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  onOpenDeleteAllData();
+                }}
+                className="w-full py-2 px-3 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-xl transition-colors cursor-pointer flex items-center justify-center gap-2 shadow-2xs"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>DELETE ALL DATA</span>
+              </button>
+            </div>
+          )}
 
           {/* Application Info */}
           <div className="p-4 rounded-xl border border-slate-100 dark:border-slate-800 bg-slate-50/40 dark:bg-slate-900/40 space-y-2 text-center">
