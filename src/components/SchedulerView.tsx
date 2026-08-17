@@ -5,6 +5,7 @@ import { StorageService } from '../services/storage';
 import { getNextAvailableServiceDate, getSmartInitialServiceDetails, isScheduleEmpty } from '../utils/scheduleUtils';
 import { getManilaNowISO, getManilaTodayString, formatDateDisplayManila, getManilaDateParts } from '../utils/dateUtils';
 import { sortTags } from '../utils/tagUtils';
+import { resolveScheduleSongTitles } from '../utils/songResolveUtils';
 import { ImportSummary } from '../services/youtubePlaylistService';
 import { SongAutocomplete } from './SongAutocomplete';
 import { MonthlyUsageModal } from './MonthlyUsageModal';
@@ -12,6 +13,7 @@ import { SongPickerModal } from './SongPickerModal';
 import { SongFormModal } from './SongFormModal';
 import { SongRecommendationsPanel } from './SongRecommendationsPanel';
 import { PlaylistImportModal } from './PlaylistImportModal';
+import { SingleSongImportModal } from './SingleSongImportModal';
 import { Modal } from './Modal';
 import {
   Church,
@@ -239,6 +241,13 @@ export const SchedulerView: React.FC<SchedulerViewProps> = ({
   // YouTube Playlist Import Modal State
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
 
+  // YouTube Single Song Import Modal State
+  const [singleSongImportConfig, setSingleSongImportConfig] = useState<{
+    isOpen: boolean;
+    initialCategory?: 'praise' | 'worship';
+    targetLineupSlot?: { category: 'praise' | 'worship'; index: number };
+  }>({ isOpen: false });
+
   // Drag and Drop State for Songs
   const [draggedItem, setDraggedItem] = useState<{ category: 'praise' | 'worship'; index: number } | null>(null);
   const [dragOverItem, setDragOverItem] = useState<{ category: 'praise' | 'worship'; index: number } | null>(null);
@@ -310,19 +319,21 @@ export const SchedulerView: React.FC<SchedulerViewProps> = ({
           setServiceType(editingSchedule.serviceType);
           setServiceDate(editingSchedule.serviceDate);
           setIsDateManuallyEdited(true);
-          setPraiseSongs(editingSchedule.praiseSongs.length ? editingSchedule.praiseSongs : ['']);
-          setWorshipSongs(editingSchedule.worshipSongs.length ? editingSchedule.worshipSongs : ['']);
 
-          const pKeys = (editingSchedule.praiseSongs.length ? editingSchedule.praiseSongs : ['']).map((s, idx) => {
+          const resolved = resolveScheduleSongTitles(editingSchedule, allSongs);
+          setPraiseSongs(resolved.praiseSongs.length ? resolved.praiseSongs : ['']);
+          setWorshipSongs(resolved.worshipSongs.length ? resolved.worshipSongs : ['']);
+
+          const pKeys = (resolved.praiseSongs.length ? resolved.praiseSongs : ['']).map((s, idx) => {
             if (editingSchedule.praiseSongKeys?.[idx] !== undefined) return editingSchedule.praiseSongKeys[idx];
-            const found = allSongs.find(x => x.title.toLowerCase() === s.trim().toLowerCase());
+            const found = allSongs.find(x => x.title.toLowerCase() === s.trim().toLowerCase() || x.id === s.trim());
             return found?.originalKey || found?.key || '';
           });
           setPraiseSongKeys(pKeys);
 
-          const wKeys = (editingSchedule.worshipSongs.length ? editingSchedule.worshipSongs : ['']).map((s, idx) => {
+          const wKeys = (resolved.worshipSongs.length ? resolved.worshipSongs : ['']).map((s, idx) => {
             if (editingSchedule.worshipSongKeys?.[idx] !== undefined) return editingSchedule.worshipSongKeys[idx];
-            const found = allSongs.find(x => x.title.toLowerCase() === s.trim().toLowerCase());
+            const found = allSongs.find(x => x.title.toLowerCase() === s.trim().toLowerCase() || x.id === s.trim());
             return found?.originalKey || found?.key || '';
           });
           setWorshipSongKeys(wKeys);
@@ -381,19 +392,20 @@ export const SchedulerView: React.FC<SchedulerViewProps> = ({
   const loadScheduleDataIntoEditor = (sched: Schedule) => {
     setServiceType(sched.serviceType);
     setServiceDate(sched.serviceDate);
-    setPraiseSongs(sched.praiseSongs.length ? sched.praiseSongs : ['']);
-    setWorshipSongs(sched.worshipSongs.length ? sched.worshipSongs : ['']);
+    const resolved = resolveScheduleSongTitles(sched, allSongs);
+    setPraiseSongs(resolved.praiseSongs.length ? resolved.praiseSongs : ['']);
+    setWorshipSongs(resolved.worshipSongs.length ? resolved.worshipSongs : ['']);
 
-    const pKeys = (sched.praiseSongs.length ? sched.praiseSongs : ['']).map((s, idx) => {
+    const pKeys = (resolved.praiseSongs.length ? resolved.praiseSongs : ['']).map((s, idx) => {
       if (sched.praiseSongKeys?.[idx] !== undefined) return sched.praiseSongKeys[idx];
-      const found = allSongs.find(x => x.title.toLowerCase() === s.trim().toLowerCase());
+      const found = allSongs.find(x => x.title.toLowerCase() === s.trim().toLowerCase() || x.id === s.trim());
       return found?.originalKey || found?.key || '';
     });
     setPraiseSongKeys(pKeys);
 
-    const wKeys = (sched.worshipSongs.length ? sched.worshipSongs : ['']).map((s, idx) => {
+    const wKeys = (resolved.worshipSongs.length ? resolved.worshipSongs : ['']).map((s, idx) => {
       if (sched.worshipSongKeys?.[idx] !== undefined) return sched.worshipSongKeys[idx];
-      const found = allSongs.find(x => x.title.toLowerCase() === s.trim().toLowerCase());
+      const found = allSongs.find(x => x.title.toLowerCase() === s.trim().toLowerCase() || x.id === s.trim());
       return found?.originalKey || found?.key || '';
     });
     setWorshipSongKeys(wKeys);
@@ -1364,6 +1376,16 @@ export const SchedulerView: React.FC<SchedulerViewProps> = ({
         };
       });
 
+    const praiseSongIds = filteredPraise.map((s) => {
+      const found = allSongs.find((x) => x.title.trim().toLowerCase() === s.trim().toLowerCase() || x.id === s.trim());
+      return found ? found.id : '';
+    });
+
+    const worshipSongIds = filteredWorship.map((s) => {
+      const found = allSongs.find((x) => x.title.trim().toLowerCase() === s.trim().toLowerCase() || x.id === s.trim());
+      return found ? found.id : '';
+    });
+
     const scheduleData: Omit<Schedule, 'id' | 'updatedAt'> = {
       serviceType,
       serviceDate,
@@ -1371,6 +1393,8 @@ export const SchedulerView: React.FC<SchedulerViewProps> = ({
       worshipSongs: filteredWorship,
       praiseSongKeys: praiseSongs.map((s, i) => praiseSongKeys[i] || '').filter((_, i) => Boolean(praiseSongs[i]?.trim())),
       worshipSongKeys: worshipSongs.map((s, i) => worshipSongKeys[i] || '').filter((_, i) => Boolean(worshipSongs[i]?.trim())),
+      praiseSongIds,
+      worshipSongIds,
       ministryAssignments: validAssignments
     };
 
@@ -1450,32 +1474,38 @@ export const SchedulerView: React.FC<SchedulerViewProps> = ({
     );
   };
 
-  const getTempSchedule = (): Schedule => ({
-    id: editingSchedule?.id || 'temp',
-    serviceType,
-    serviceDate,
-    praiseSongs: praiseSongs.filter(Boolean),
-    worshipSongs: worshipSongs.filter(Boolean),
-    praiseSongKeys: praiseSongKeys.filter((_, i) => Boolean(praiseSongs[i]?.trim())),
-    worshipSongKeys: worshipSongKeys.filter((_, i) => Boolean(worshipSongs[i]?.trim())),
-    ministryAssignments: ministryRows
-      .filter((r) => r.role.trim() !== '')
-      .map((r) => {
-        const rawMembers = getAssignmentMembers(r);
-        const validMembers = rawMembers.filter((m) => m.memberId || m.memberName);
-        const joinedNames = validMembers.map(m => m.memberName).filter(Boolean).join(', ');
+  const getTempSchedule = (): Schedule => {
+    const cleanP = praiseSongs.filter(Boolean);
+    const cleanW = worshipSongs.filter(Boolean);
+    return {
+      id: editingSchedule?.id || 'temp',
+      serviceType,
+      serviceDate,
+      praiseSongs: cleanP,
+      worshipSongs: cleanW,
+      praiseSongKeys: praiseSongKeys.filter((_, i) => Boolean(praiseSongs[i]?.trim())),
+      worshipSongKeys: worshipSongKeys.filter((_, i) => Boolean(worshipSongs[i]?.trim())),
+      praiseSongIds: cleanP.map((s) => allSongs.find((x) => x.title.trim().toLowerCase() === s.trim().toLowerCase() || x.id === s.trim())?.id || ''),
+      worshipSongIds: cleanW.map((s) => allSongs.find((x) => x.title.trim().toLowerCase() === s.trim().toLowerCase() || x.id === s.trim())?.id || ''),
+      ministryAssignments: ministryRows
+        .filter((r) => r.role.trim() !== '')
+        .map((r) => {
+          const rawMembers = getAssignmentMembers(r);
+          const validMembers = rawMembers.filter((m) => m.memberId || m.memberName);
+          const joinedNames = validMembers.map(m => m.memberName).filter(Boolean).join(', ');
 
-        return {
-          id: r.id,
-          role: r.role.trim(),
-          assignedMembers: validMembers,
-          memberId: validMembers[0]?.memberId || '',
-          memberName: joinedNames,
-          notes: r.notes || ''
-        };
-      }),
-    updatedAt: getManilaNowISO()
-  });
+          return {
+            id: r.id,
+            role: r.role.trim(),
+            assignedMembers: validMembers,
+            memberId: validMembers[0]?.memberId || '',
+            memberName: joinedNames,
+            notes: r.notes || ''
+          };
+        }),
+      updatedAt: getManilaNowISO()
+    };
+  };
 
   const handleExportPDF = () => {
     const temp = getTempSchedule();
@@ -1625,6 +1655,20 @@ export const SchedulerView: React.FC<SchedulerViewProps> = ({
 
             <button
               type="button"
+              onClick={() =>
+                setSingleSongImportConfig({
+                  isOpen: true,
+                  initialCategory: 'praise'
+                })
+              }
+              className="px-3 py-1.5 bg-red-50 hover:bg-red-100 dark:bg-red-950/80 dark:hover:bg-red-900/80 text-red-600 dark:text-red-400 border border-red-200/80 dark:border-red-800/80 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5 cursor-pointer shadow-2xs"
+            >
+              <Youtube className="w-4 h-4 text-red-500" />
+              <span>Import Song</span>
+            </button>
+
+            <button
+              type="button"
               data-tour="import-playlist-btn"
               onClick={() => setIsImportModalOpen(true)}
               className="px-3.5 py-1.5 bg-gradient-to-r from-red-600 to-indigo-600 hover:from-red-700 hover:to-indigo-700 text-white rounded-lg text-xs font-semibold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer"
@@ -1643,14 +1687,34 @@ export const SchedulerView: React.FC<SchedulerViewProps> = ({
                 <Zap className="w-4 h-4 text-amber-500 fill-amber-500/20" />
                 <span>Praise Songs (Fast)</span>
               </h4>
-              <button
-                type="button"
-                onClick={addPraiseSong}
-                className="text-indigo-600 dark:text-indigo-400 text-xs font-bold hover:underline flex items-center gap-1 cursor-pointer"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                <span>Add Song</span>
-              </button>
+              <div className="flex items-center gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSingleSongImportConfig({
+                      isOpen: true,
+                      initialCategory: 'praise',
+                      targetLineupSlot: {
+                        category: 'praise',
+                        index: praiseSongs.length
+                      }
+                    });
+                  }}
+                  className="text-red-600 dark:text-red-400 text-xs font-bold hover:underline flex items-center gap-1 cursor-pointer"
+                  title="Import praise song from YouTube URL"
+                >
+                  <Youtube className="w-3.5 h-3.5" />
+                  <span>Import Song</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={addPraiseSong}
+                  className="text-indigo-600 dark:text-indigo-400 text-xs font-bold hover:underline flex items-center gap-1 cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Add Song</span>
+                </button>
+              </div>
             </div>
 
             <div className="space-y-2.5">
@@ -1769,14 +1833,34 @@ export const SchedulerView: React.FC<SchedulerViewProps> = ({
                 <Heart className="w-4 h-4 text-indigo-500 fill-indigo-500/20" />
                 <span>Worship Songs (Slow)</span>
               </h4>
-              <button
-                type="button"
-                onClick={addWorshipSong}
-                className="text-indigo-600 dark:text-indigo-400 text-xs font-bold hover:underline flex items-center gap-1 cursor-pointer"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                <span>Add Song</span>
-              </button>
+              <div className="flex items-center gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSingleSongImportConfig({
+                      isOpen: true,
+                      initialCategory: 'worship',
+                      targetLineupSlot: {
+                        category: 'worship',
+                        index: worshipSongs.length
+                      }
+                    });
+                  }}
+                  className="text-red-600 dark:text-red-400 text-xs font-bold hover:underline flex items-center gap-1 cursor-pointer"
+                  title="Import worship song from YouTube URL"
+                >
+                  <Youtube className="w-3.5 h-3.5" />
+                  <span>Import Song</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={addWorshipSong}
+                  className="text-indigo-600 dark:text-indigo-400 text-xs font-bold hover:underline flex items-center gap-1 cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Add Song</span>
+                </button>
+              </div>
             </div>
 
             <div className="space-y-2.5">
@@ -2195,25 +2279,33 @@ export const SchedulerView: React.FC<SchedulerViewProps> = ({
             <span>Save Schedule</span>
           </button>
 
-          <button
-            type="button"
-            data-tour="export-pdf-btn"
-            onClick={handleExportPDF}
-            className="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/80 hover:bg-indigo-100 dark:hover:bg-indigo-900/80 border border-indigo-200/80 dark:border-indigo-800/80 rounded-lg transition-colors cursor-pointer"
+          {/* Export Action Buttons - Targeted by Interactive Guide Step 8 */}
+          <div
+            data-tour="export-buttons-pair"
+            className="inline-flex flex-wrap items-center gap-3"
           >
-            <FileDown className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
-            <span>Export as PDF</span>
-          </button>
+            <button
+              type="button"
+              data-tour="export-pdf-btn"
+              data-guide="export-pdf"
+              onClick={handleExportPDF}
+              className="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/80 hover:bg-indigo-100 dark:hover:bg-indigo-900/80 border border-indigo-200/80 dark:border-indigo-800/80 rounded-lg transition-colors cursor-pointer"
+            >
+              <FileDown className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+              <span>Export as PDF</span>
+            </button>
 
-          <button
-            type="button"
-            data-tour="export-png-btn"
-            onClick={handleExportPNG}
-            className="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 rounded-lg transition-colors cursor-pointer"
-          >
-            <Image className="w-4 h-4 text-slate-500 dark:text-slate-400" />
-            <span>Export as PNG</span>
-          </button>
+            <button
+              type="button"
+              data-tour="export-png-btn"
+              data-guide="export-png"
+              onClick={handleExportPNG}
+              className="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 rounded-lg transition-colors cursor-pointer"
+            >
+              <Image className="w-4 h-4 text-slate-500 dark:text-slate-400" />
+              <span>Export as PNG</span>
+            </button>
+          </div>
         </div>
 
         <button
@@ -2278,6 +2370,16 @@ export const SchedulerView: React.FC<SchedulerViewProps> = ({
         }}
         onAddNewSong={() => {
           setIsSongFormOpen(true);
+        }}
+        onImportYouTubeSong={() => {
+          setSingleSongImportConfig({
+            isOpen: true,
+            initialCategory: pickerConfig.category,
+            targetLineupSlot: {
+              category: pickerConfig.category,
+              index: pickerConfig.songIndex
+            }
+          });
         }}
       />
 
@@ -2388,6 +2490,110 @@ export const SchedulerView: React.FC<SchedulerViewProps> = ({
         onClose={() => setIsImportModalOpen(false)}
         onSelectBlank={handleCreateBlankLineup}
         onImportComplete={handlePlaylistImportComplete}
+        showToast={showToast}
+      />
+
+      {/* YouTube / YouTube Music Single Song Import Modal */}
+      <SingleSongImportModal
+        isOpen={singleSongImportConfig.isOpen}
+        initialCategory={singleSongImportConfig.initialCategory || 'praise'}
+        onClose={() => setSingleSongImportConfig({ isOpen: false })}
+        onImportComplete={(savedSong) => {
+          onRefreshSongs();
+
+          const targetCategory =
+            singleSongImportConfig.targetLineupSlot?.category ||
+            (savedSong.category === 'worship' ? 'worship' : 'praise');
+          const targetIdx = singleSongImportConfig.targetLineupSlot?.index;
+          const songKey = savedSong.originalKey || savedSong.key || '';
+
+          if (targetCategory === 'praise') {
+            const updatedPraise = [...praiseSongs];
+            const updatedKeys = [...praiseSongKeys];
+
+            if (targetIdx !== undefined && targetIdx >= 0 && targetIdx < updatedPraise.length) {
+              updatedPraise[targetIdx] = savedSong.title;
+              updatedKeys[targetIdx] = songKey;
+            } else {
+              const emptyIdx = updatedPraise.findIndex((s) => !s.trim());
+              if (emptyIdx >= 0) {
+                updatedPraise[emptyIdx] = savedSong.title;
+                updatedKeys[emptyIdx] = songKey;
+              } else {
+                updatedPraise.push(savedSong.title);
+                updatedKeys.push(songKey);
+              }
+            }
+            setPraiseSongs(updatedPraise);
+            setPraiseSongKeys(updatedKeys);
+          } else {
+            const updatedWorship = [...worshipSongs];
+            const updatedKeys = [...worshipSongKeys];
+
+            if (targetIdx !== undefined && targetIdx >= 0 && targetIdx < updatedWorship.length) {
+              updatedWorship[targetIdx] = savedSong.title;
+              updatedKeys[targetIdx] = songKey;
+            } else {
+              const emptyIdx = updatedWorship.findIndex((s) => !s.trim());
+              if (emptyIdx >= 0) {
+                updatedWorship[emptyIdx] = savedSong.title;
+                updatedKeys[emptyIdx] = songKey;
+              } else {
+                updatedWorship.push(savedSong.title);
+                updatedKeys.push(songKey);
+              }
+            }
+            setWorshipSongs(updatedWorship);
+            setWorshipSongKeys(updatedKeys);
+          }
+        }}
+        onSelectExistingForLineup={(existingSong, customKey) => {
+          const targetCategory =
+            singleSongImportConfig.targetLineupSlot?.category ||
+            (existingSong.category === 'worship' ? 'worship' : 'praise');
+          const targetIdx = singleSongImportConfig.targetLineupSlot?.index;
+          const songKey = customKey || existingSong.originalKey || existingSong.key || '';
+
+          if (targetCategory === 'praise') {
+            const updatedPraise = [...praiseSongs];
+            const updatedKeys = [...praiseSongKeys];
+
+            if (targetIdx !== undefined && targetIdx >= 0 && targetIdx < updatedPraise.length) {
+              updatedPraise[targetIdx] = existingSong.title;
+              updatedKeys[targetIdx] = songKey;
+            } else {
+              const emptyIdx = updatedPraise.findIndex((s) => !s.trim());
+              if (emptyIdx >= 0) {
+                updatedPraise[emptyIdx] = existingSong.title;
+                updatedKeys[emptyIdx] = songKey;
+              } else {
+                updatedPraise.push(existingSong.title);
+                updatedKeys.push(songKey);
+              }
+            }
+            setPraiseSongs(updatedPraise);
+            setPraiseSongKeys(updatedKeys);
+          } else {
+            const updatedWorship = [...worshipSongs];
+            const updatedKeys = [...worshipSongKeys];
+
+            if (targetIdx !== undefined && targetIdx >= 0 && targetIdx < updatedWorship.length) {
+              updatedWorship[targetIdx] = existingSong.title;
+              updatedKeys[targetIdx] = songKey;
+            } else {
+              const emptyIdx = updatedWorship.findIndex((s) => !s.trim());
+              if (emptyIdx >= 0) {
+                updatedWorship[emptyIdx] = existingSong.title;
+                updatedKeys[emptyIdx] = songKey;
+              } else {
+                updatedWorship.push(existingSong.title);
+                updatedKeys.push(songKey);
+              }
+            }
+            setWorshipSongs(updatedWorship);
+            setWorshipSongKeys(updatedKeys);
+          }
+        }}
         showToast={showToast}
       />
     </div>

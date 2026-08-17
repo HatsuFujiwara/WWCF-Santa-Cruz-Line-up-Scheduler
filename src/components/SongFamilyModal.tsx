@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Song, SongFamily, SongRelationshipType } from '../types';
 import { SongFamilyService } from '../services/songFamilyService';
+import { getNormalizedBaseTitle, inferRelationshipType } from '../utils/songFamilyUtils';
 import {
   X,
   Layers,
@@ -12,7 +13,8 @@ import {
   Star,
   Unlink,
   AlertTriangle,
-  Info
+  Info,
+  ArrowRight
 } from 'lucide-react';
 
 interface SongFamilyModalProps {
@@ -20,6 +22,7 @@ interface SongFamilyModalProps {
   familyToEdit?: SongFamily | null;
   initialSongs?: Song[];
   allSongs: Song[];
+  allFamilies?: SongFamily[];
   onClose: () => void;
   onSaved: () => void;
   showToast: (msg: string, type?: 'success' | 'danger' | 'info') => void;
@@ -32,7 +35,8 @@ const RELATIONSHIP_OPTIONS: { value: SongRelationshipType; label: string; desc: 
   { value: 'COVER', label: 'Cover Version', desc: 'Recorded by a different artist/band' },
   { value: 'REMAKE', label: 'Remake / Re-recording', desc: 'Modern re-recording or new arrangement' },
   { value: 'ALTERNATE_VERSION', label: 'Alternate / Studio Edit', desc: 'Radio edit, extended, or alternate mix' },
-  { value: 'VERSION', label: 'General Version', desc: 'Another recording or variation' }
+  { value: 'VERSION', label: 'General Version', desc: 'Another recording or variation' },
+  { value: 'UNKNOWN', label: 'Unknown', desc: 'Unspecified version or relationship' }
 ];
 
 export const SongFamilyModal: React.FC<SongFamilyModalProps> = ({
@@ -40,6 +44,7 @@ export const SongFamilyModal: React.FC<SongFamilyModalProps> = ({
   familyToEdit,
   initialSongs = [],
   allSongs,
+  allFamilies = [],
   onClose,
   onSaved,
   showToast
@@ -54,20 +59,30 @@ export const SongFamilyModal: React.FC<SongFamilyModalProps> = ({
   const [songSearchQuery, setSongSearchQuery] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [showAddSongsList, setShowAddSongsList] = useState(false);
+  const [duplicateConflict, setDuplicateConflict] = useState<{ song: Song; currentFamily: SongFamily } | null>(null);
 
+  // Initialize or reset form state on open or props change
   useEffect(() => {
+    if (!isOpen) return;
+
+    setShowAddSongsList(false);
+    setSongSearchQuery('');
+    setDuplicateConflict(null);
+    setIsSaving(false);
+
     if (familyToEdit) {
       setFamilyName(familyToEdit.name || '');
-      setSelectedSongIds(familyToEdit.versionIds || []);
-      setOriginalSongId(familyToEdit.originalSongId || (familyToEdit.versionIds[0] || ''));
+      const vIds = familyToEdit.versionIds || [];
+      setSelectedSongIds(vIds);
+      setOriginalSongId(familyToEdit.originalSongId || (vIds.length > 0 ? vIds[0] : ''));
       setNotes(familyToEdit.notes || '');
 
       const rMap: Record<string, SongRelationshipType> = {};
       (familyToEdit.versions || []).forEach((v) => {
         rMap[v.songId] = v.relationshipType;
       });
-      // Fallback for songs in versionIds but not in versions
-      familyToEdit.versionIds.forEach((sid) => {
+      // Fallback for songs in versionIds but missing in versions array
+      vIds.forEach((sid) => {
         if (!rMap[sid]) {
           const song = allSongs.find((s) => s.id === sid);
           rMap[sid] = song?.relationshipType || (sid === familyToEdit.originalSongId ? 'ORIGINAL' : 'VERSION');
@@ -75,57 +90,144 @@ export const SongFamilyModal: React.FC<SongFamilyModalProps> = ({
       });
       setRelationshipMap(rMap);
     } else {
-      const initIds = initialSongs.map((s) => s.id);
+      const initList = initialSongs || [];
+      const initIds = initList.map((s) => s.id);
       setSelectedSongIds(initIds);
-      const defaultName = initialSongs.length > 0 ? initialSongs[0].title.replace(/\s*[\(\[].*?[\)\]]/g, '').trim() : '';
-      setFamilyName(defaultName);
-      setOriginalSongId(initIds.length > 0 ? initIds[0] : '');
+
+      // Determine clean suggested name from first song
+      let suggestedName = '';
+      if (initList.length > 0) {
+        suggestedName = getNormalizedBaseTitle(initList[0].title) || initList[0].title.replace(/\s*[\(\[].*?[\)\]]/g, '').trim() || initList[0].title.trim();
+      }
+      setFamilyName(suggestedName);
+
+      // Determine initial original song
+      const explicitOriginal = initList.find((s) => s.relationshipType === 'ORIGINAL');
+      const origId = explicitOriginal ? explicitOriginal.id : (initIds.length > 0 ? initIds[0] : '');
+      setOriginalSongId(origId);
       setNotes('');
 
+      // Build initial relationships
       const rMap: Record<string, SongRelationshipType> = {};
-      initialSongs.forEach((s, idx) => {
-        rMap[s.id] = idx === 0 ? 'ORIGINAL' : (s.relationshipType || 'VERSION');
+      initList.forEach((s, idx) => {
+        if (s.id === origId) {
+          rMap[s.id] = 'ORIGINAL';
+        } else {
+          const inferred = initList[0] ? inferRelationshipType(s, initList[0]) : 'VERSION';
+          rMap[s.id] = s.relationshipType && s.relationshipType !== 'ORIGINAL' ? s.relationshipType : (inferred || 'VERSION');
+        }
       });
       setRelationshipMap(rMap);
     }
-  }, [familyToEdit, initialSongs, allSongs]);
+  }, [isOpen, familyToEdit, initialSongs, allSongs]);
+
+  const addSongToDraft = (song: Song) => {
+    if (selectedSongIds.includes(song.id)) return;
+    const nextIds = [...selectedSongIds, song.id];
+    setSelectedSongIds(nextIds);
+
+    const isFirst = nextIds.length === 1;
+    let relType: SongRelationshipType = 'VERSION';
+
+    if (isFirst) {
+      relType = 'ORIGINAL';
+      setOriginalSongId(song.id);
+    } else {
+      const primarySong = allSongs.find((s) => s.id === (originalSongId || selectedSongIds[0]));
+      const inferred = primarySong ? inferRelationshipType(song, primarySong) : 'VERSION';
+      relType = song.relationshipType && song.relationshipType !== 'ORIGINAL' ? song.relationshipType : (inferred || 'VERSION');
+    }
+
+    setRelationshipMap((prev) => ({
+      ...prev,
+      [song.id]: relType
+    }));
+  };
 
   const handleToggleAddSong = (songId: string) => {
     if (selectedSongIds.includes(songId)) {
       handleRemoveSong(songId);
-    } else {
-      setSelectedSongIds((prev) => [...prev, songId]);
-      setRelationshipMap((prev) => ({
-        ...prev,
-        [songId]: selectedSongIds.length === 0 ? 'ORIGINAL' : 'VERSION'
-      }));
-      if (!originalSongId) {
-        setOriginalSongId(songId);
+      return;
+    }
+
+    const songToAdd = allSongs.find((s) => s.id === songId);
+    if (!songToAdd) return;
+
+    // Check if the song already belongs to a different family
+    if (songToAdd.songFamilyId && songToAdd.songFamilyId !== familyToEdit?.id) {
+      const existingFamily = allFamilies.find((f) => f.id === songToAdd.songFamilyId);
+      if (existingFamily) {
+        setDuplicateConflict({
+          song: songToAdd,
+          currentFamily: existingFamily
+        });
+        return;
       }
     }
+
+    addSongToDraft(songToAdd);
+  };
+
+  const handleConfirmMoveConflictSong = () => {
+    if (!duplicateConflict) return;
+    addSongToDraft(duplicateConflict.song);
+    setDuplicateConflict(null);
   };
 
   const handleRemoveSong = (songId: string) => {
     const nextIds = selectedSongIds.filter((id) => id !== songId);
     setSelectedSongIds(nextIds);
+
+    setRelationshipMap((prev) => {
+      const copy = { ...prev };
+      delete copy[songId];
+      return copy;
+    });
+
     if (originalSongId === songId) {
-      setOriginalSongId(nextIds.length > 0 ? nextIds[0] : '');
+      // Find next candidate for original
+      const nextOriginal = nextIds.find((id) => relationshipMap[id] === 'ORIGINAL') || (nextIds.length > 0 ? nextIds[0] : '');
+      setOriginalSongId(nextOriginal);
+      if (nextOriginal) {
+        setRelationshipMap((prev) => ({ ...prev, [nextOriginal]: 'ORIGINAL' }));
+      }
     }
   };
 
   const handleRelationshipChange = (songId: string, rel: SongRelationshipType) => {
-    setRelationshipMap((prev) => ({ ...prev, [songId]: rel }));
+    setRelationshipMap((prev) => {
+      const updated = { ...prev, [songId]: rel };
+      if (rel === 'ORIGINAL') {
+        // Enforce single original rule: set all other versions to non-original
+        Object.keys(updated).forEach((id) => {
+          if (id !== songId && updated[id] === 'ORIGINAL') {
+            updated[id] = 'VERSION';
+          }
+        });
+      }
+      return updated;
+    });
+
     if (rel === 'ORIGINAL') {
       setOriginalSongId(songId);
+    } else if (originalSongId === songId) {
+      // If the current original was changed to something else, clear original or leave open
+      const otherOriginal = selectedSongIds.find((id) => id !== songId && relationshipMap[id] === 'ORIGINAL');
+      setOriginalSongId(otherOriginal || '');
     }
   };
 
   const handleSetOriginal = (songId: string) => {
     setOriginalSongId(songId);
-    setRelationshipMap((prev) => ({
-      ...prev,
-      [songId]: 'ORIGINAL'
-    }));
+    setRelationshipMap((prev) => {
+      const updated = { ...prev, [songId]: 'ORIGINAL' };
+      Object.keys(updated).forEach((id) => {
+        if (id !== songId && updated[id] === 'ORIGINAL') {
+          updated[id] = 'VERSION';
+        }
+      });
+      return updated;
+    });
   };
 
   const handleSave = async (e: React.FormEvent) => {
@@ -142,9 +244,10 @@ export const SongFamilyModal: React.FC<SongFamilyModalProps> = ({
 
     setIsSaving(true);
     try {
+      const effectiveOriginalId = originalSongId || (selectedSongIds.length > 0 ? selectedSongIds[0] : undefined);
       const versionsList = selectedSongIds.map((sid) => ({
         songId: sid,
-        relationshipType: relationshipMap[sid] || (sid === originalSongId ? 'ORIGINAL' : 'VERSION')
+        relationshipType: relationshipMap[sid] || (sid === effectiveOriginalId ? 'ORIGINAL' : 'VERSION')
       }));
 
       if (familyToEdit) {
@@ -152,7 +255,7 @@ export const SongFamilyModal: React.FC<SongFamilyModalProps> = ({
           ...familyToEdit,
           name: familyName.trim(),
           versionIds: selectedSongIds,
-          originalSongId: originalSongId || selectedSongIds[0],
+          originalSongId: effectiveOriginalId,
           notes: notes.trim(),
           versions: versionsList.map((v) => ({ ...v, confidence: 'high' }))
         });
@@ -161,7 +264,7 @@ export const SongFamilyModal: React.FC<SongFamilyModalProps> = ({
         await SongFamilyService.createSongFamily({
           name: familyName.trim(),
           songIds: selectedSongIds,
-          originalSongId: originalSongId || selectedSongIds[0],
+          originalSongId: effectiveOriginalId,
           notes: notes.trim(),
           versions: versionsList
         });
@@ -180,7 +283,7 @@ export const SongFamilyModal: React.FC<SongFamilyModalProps> = ({
 
   const handleDeleteFamily = async () => {
     if (!familyToEdit) return;
-    if (window.confirm(`Are you sure you want to dissolve the Song Family "${familyToEdit.name}"? Individual songs will NOT be deleted.`)) {
+    if (window.confirm(`Are you sure you want to dissolve the Song Family "${familyToEdit.name}"? Individual song records, keys, and history will NOT be deleted.`)) {
       setIsSaving(true);
       try {
         await SongFamilyService.deleteSongFamily(familyToEdit.id);
@@ -201,7 +304,7 @@ export const SongFamilyModal: React.FC<SongFamilyModalProps> = ({
     if (selectedSongIds.includes(s.id)) return false;
     if (!songSearchQuery.trim()) return true;
     const q = songSearchQuery.toLowerCase();
-    return s.title.toLowerCase().includes(q) || s.artist.toLowerCase().includes(q);
+    return s.title.toLowerCase().includes(q) || s.artist.toLowerCase().includes(q) || (s.key && s.key.toLowerCase().includes(q));
   });
 
   const selectedSongObjects = selectedSongIds
@@ -259,7 +362,7 @@ export const SongFamilyModal: React.FC<SongFamilyModalProps> = ({
           <div className="space-y-2.5">
             <div className="flex items-center justify-between">
               <label className="block text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400">
-                Member Song Versions ({selectedSongObjects.length})
+                Song Versions ({selectedSongObjects.length})
               </label>
               <button
                 type="button"
@@ -443,6 +546,55 @@ export const SongFamilyModal: React.FC<SongFamilyModalProps> = ({
             </button>
           </div>
         </div>
+
+        {/* Duplicate Family Conflict Dialog */}
+        {duplicateConflict && (
+          <div className="absolute inset-0 z-60 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
+            <div className="w-full max-w-md bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 p-6 space-y-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 rounded-xl bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 shrink-0">
+                  <AlertTriangle className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">
+                    Song Already in Another Family
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Duplicate family membership prevention
+                  </p>
+                </div>
+              </div>
+
+              <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-xs text-slate-700 dark:text-slate-300 space-y-1">
+                <p>
+                  <strong>"{duplicateConflict.song.title}"</strong> already belongs to the Song Family{' '}
+                  <strong className="text-indigo-600 dark:text-indigo-400">"{duplicateConflict.currentFamily.name}"</strong>.
+                </p>
+                <p className="text-slate-500 text-[11px] pt-1">
+                  Moving this song will unlink it from its old family while preserving all song records, metadata, keys, and history.
+                </p>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setDuplicateConflict(null)}
+                  className="px-3.5 py-2 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmMoveConflictSong}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-xs transition-colors cursor-pointer"
+                >
+                  <span>Move to This Family</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

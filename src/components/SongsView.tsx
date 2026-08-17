@@ -8,6 +8,7 @@ import { getManilaTodayString } from '../utils/dateUtils';
 import { useMultiSelect } from '../hooks/useMultiSelect';
 import { SongFormModal } from './SongFormModal';
 import { PlaylistImportModal } from './PlaylistImportModal';
+import { SingleSongImportModal } from './SingleSongImportModal';
 import { SongFamilyModal } from './SongFamilyModal';
 import { SongFamilySuggestionsModal } from './SongFamilySuggestionsModal';
 import { GetMetadataModal } from './GetMetadataModal';
@@ -32,8 +33,24 @@ import {
   ChevronUp,
   Tag,
   X,
-  Network
+  Network,
+  Languages,
+  ArrowUpDown,
+  Folder,
+  FolderOpen,
+  LayoutGrid,
+  FolderTree,
+  Unlink,
+  Check
 } from 'lucide-react';
+
+export type SongSortOption =
+  | 'name-asc'
+  | 'name-desc'
+  | 'most-played'
+  | 'least-played'
+  | 'played-recently'
+  | 'played-longest-ago';
 
 interface SongsViewProps {
   songs: Song[];
@@ -53,11 +70,13 @@ export const SongsView: React.FC<SongsViewProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [languageFilter, setLanguageFilter] = useState<string>('all');
+  const [sortBy, setSortBy] = useState<SongSortOption>('name-asc');
   const [expandedHistoryId, setExpandedHistoryId] = useState<string | null>(null);
 
   // Form Modal state
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [isSingleSongImportOpen, setIsSingleSongImportOpen] = useState(false);
   const [editingSong, setEditingSong] = useState<Song | null>(null);
 
   // Song Family state
@@ -160,6 +179,100 @@ export const SongsView: React.FC<SongsViewProps> = ({
     return true;
   });
 
+  // Helper to compute effective usage count and last-used date with Song Family aggregation
+  const getSongEffectiveStats = (s: Song) => {
+    const family = s.songFamilyId
+      ? songFamilies.find((f) => f.id === s.songFamilyId)
+      : songFamilies.find((f) => f.versionIds.includes(s.id));
+
+    if (family) {
+      const memberSongs = songs.filter(
+        (m) => family.versionIds.includes(m.id) || m.songFamilyId === family.id
+      );
+      const timesUsed = memberSongs.reduce((sum, m) => sum + (m.timesUsed || 0), 0);
+      const dates = memberSongs
+        .map((m) => m.lastUsedDate)
+        .filter((d): d is string => Boolean(d && d.trim()));
+      dates.sort().reverse();
+      const lastUsedDate = dates.length > 0 ? dates[0] : null;
+      return { timesUsed, lastUsedDate };
+    }
+
+    return {
+      timesUsed: s.timesUsed || 0,
+      lastUsedDate: s.lastUsedDate && s.lastUsedDate.trim() ? s.lastUsedDate : null
+    };
+  };
+
+  // Sort filtered songs based on active sort option
+  const sortedSongs = [...filteredSongs].sort((a, b) => {
+    const titleA = a.title.toLowerCase();
+    const titleB = b.title.toLowerCase();
+
+    if (sortBy === 'name-asc') {
+      return titleA.localeCompare(titleB);
+    }
+
+    if (sortBy === 'name-desc') {
+      return titleB.localeCompare(titleA);
+    }
+
+    const statsA = getSongEffectiveStats(a);
+    const statsB = getSongEffectiveStats(b);
+
+    if (sortBy === 'most-played') {
+      if (statsA.timesUsed !== statsB.timesUsed) {
+        return statsB.timesUsed - statsA.timesUsed; // Highest count first
+      }
+      return titleA.localeCompare(titleB);
+    }
+
+    if (sortBy === 'least-played') {
+      if (statsA.timesUsed !== statsB.timesUsed) {
+        return statsA.timesUsed - statsB.timesUsed; // Lowest count first (0s first)
+      }
+      return titleA.localeCompare(titleB);
+    }
+
+    if (sortBy === 'played-recently') {
+      const hasDateA = Boolean(statsA.lastUsedDate && statsA.timesUsed > 0);
+      const hasDateB = Boolean(statsB.lastUsedDate && statsB.timesUsed > 0);
+
+      // Never-played songs appear at the bottom
+      if (hasDateA && !hasDateB) return -1;
+      if (!hasDateA && hasDateB) return 1;
+      if (!hasDateA && !hasDateB) return titleA.localeCompare(titleB);
+
+      // Both have dates - most recent first (descending)
+      const dateA = statsA.lastUsedDate!;
+      const dateB = statsB.lastUsedDate!;
+      if (dateA !== dateB) {
+        return dateB.localeCompare(dateA);
+      }
+      return titleA.localeCompare(titleB);
+    }
+
+    if (sortBy === 'played-longest-ago') {
+      const hasDateA = Boolean(statsA.lastUsedDate && statsA.timesUsed > 0);
+      const hasDateB = Boolean(statsB.lastUsedDate && statsB.timesUsed > 0);
+
+      // Never-played songs appear FIRST because they have no previous usage
+      if (!hasDateA && hasDateB) return -1;
+      if (hasDateA && !hasDateB) return 1;
+      if (!hasDateA && !hasDateB) return titleA.localeCompare(titleB);
+
+      // Both have dates - longest ago first (ascending)
+      const dateA = statsA.lastUsedDate!;
+      const dateB = statsB.lastUsedDate!;
+      if (dateA !== dateB) {
+        return dateA.localeCompare(dateB);
+      }
+      return titleA.localeCompare(titleB);
+    }
+
+    return titleA.localeCompare(titleB);
+  });
+
   // Multi-select hook
   const {
     selectedIds,
@@ -170,7 +283,7 @@ export const SongsView: React.FC<SongsViewProps> = ({
     isSelected,
     isAllSelected,
     isSomeSelected
-  } = useMultiSelect(filteredSongs);
+  } = useMultiSelect(sortedSongs);
 
   const handleRequestDelete = (targets: Song[]) => {
     if (targets.length === 0) return;
@@ -255,6 +368,29 @@ export const SongsView: React.FC<SongsViewProps> = ({
     }
   };
 
+  const handleBulkLanguageChange = async (targetLanguage: 'English' | 'Tagalog' | 'Multi-lingual') => {
+    const selectedSongs = songs.filter((s) => selectedIds.has(s.id));
+    if (selectedSongs.length === 0) return;
+
+    try {
+      const targetIds = selectedSongs.map((s) => s.id);
+      await SongService.bulkUpdateLanguage(targetIds, targetLanguage);
+
+      showToast(
+        selectedSongs.length === 1
+          ? `Set "${selectedSongs[0].title}" language to ${targetLanguage}.`
+          : `Set ${selectedSongs.length} selected songs to ${targetLanguage}.`,
+        'success'
+      );
+
+      clearSelection();
+      onRefreshSongs();
+    } catch (err) {
+      console.error('Failed to update song languages:', err);
+      showToast('Failed to update song languages', 'danger');
+    }
+  };
+
   const currentYM = getManilaTodayString().substring(0, 7);
 
   // Stats
@@ -307,6 +443,15 @@ export const SongsView: React.FC<SongsViewProps> = ({
           >
             <Youtube className="w-4 h-4 text-red-500" />
             <span>Import Playlist</span>
+          </button>
+
+          <button
+            onClick={() => setIsSingleSongImportOpen(true)}
+            data-tour="song-import-btn"
+            className="inline-flex items-center gap-2 px-3.5 py-2.5 text-xs font-bold text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/80 hover:bg-red-100 dark:hover:bg-red-900/80 border border-red-200/80 dark:border-red-800/80 rounded-xl transition-colors cursor-pointer shadow-2xs"
+          >
+            <Youtube className="w-4 h-4 text-red-500" />
+            <span>Import Song</span>
           </button>
 
           <button
@@ -427,13 +572,37 @@ export const SongsView: React.FC<SongsViewProps> = ({
           <select
             value={languageFilter}
             onChange={(e) => setLanguageFilter(e.target.value)}
-            className="px-3 py-2 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-slate-100 outline-none w-full sm:w-auto min-h-[38px]"
+            className="px-3 py-2 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-slate-100 outline-none w-full sm:w-auto min-h-[38px] cursor-pointer"
           >
             <option value="all">All Languages</option>
             <option value="English">English</option>
             <option value="Tagalog">Tagalog</option>
-            <option value="Other / Unknown">Other / Unknown</option>
+            <option value="Multi-lingual">Multi-lingual</option>
           </select>
+
+          {/* Sort By Dropdown */}
+          <div className="flex items-center gap-1.5 w-full sm:w-auto">
+            <span className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider whitespace-nowrap pl-1 hidden xl:inline">
+              Sort by:
+            </span>
+            <div className="relative w-full sm:w-auto">
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value as SongSortOption)}
+                aria-label="Sort songs"
+                className="w-full sm:w-auto pl-8 pr-8 py-2 text-xs font-semibold rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-slate-100 outline-none min-h-[38px] cursor-pointer appearance-none hover:border-slate-300 dark:hover:border-slate-600 transition-colors"
+              >
+                <option value="name-asc">Name — A to Z</option>
+                <option value="name-desc">Name — Z to A</option>
+                <option value="most-played">Most Played</option>
+                <option value="least-played">Least Played</option>
+                <option value="played-recently">Played Recently</option>
+                <option value="played-longest-ago">Played Longest Ago</option>
+              </select>
+              <ArrowUpDown className="w-3.5 h-3.5 text-slate-400 pointer-events-none absolute left-2.5 top-3" />
+              <ChevronDown className="w-3.5 h-3.5 text-slate-400 pointer-events-none absolute right-2.5 top-3" />
+            </div>
+          </div>
         </div>
       </div>
 
@@ -447,10 +616,10 @@ export const SongsView: React.FC<SongsViewProps> = ({
               ref={(el) => {
                 if (el) el.indeterminate = isSomeSelected;
               }}
-              onChange={() => toggleSelectAll(filteredSongs)}
+              onChange={() => toggleSelectAll(sortedSongs)}
               className="w-4 h-4 rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
             />
-            <span>Select All ({filteredSongs.length})</span>
+            <span>Select All ({sortedSongs.length})</span>
           </label>
 
           {selectedCount > 0 && (
@@ -469,6 +638,22 @@ export const SongsView: React.FC<SongsViewProps> = ({
                   onClick={() => {
                     const singleSong = songs.find((s) => selectedIds.has(s.id));
                     if (singleSong) {
+                      setEditingSong(singleSong);
+                      setIsModalOpen(true);
+                    }
+                  }}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-700 hover:bg-slate-100 dark:hover:bg-slate-600 border border-slate-200 dark:border-slate-600 rounded-lg transition-colors cursor-pointer shadow-xs"
+                  title="Edit Song"
+                >
+                  <Edit2 className="w-3.5 h-3.5" />
+                  <span>Edit</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    const singleSong = songs.find((s) => selectedIds.has(s.id));
+                    if (singleSong) {
                       setMetadataSong(singleSong);
                       setIsMetadataModalOpen(true);
                     }
@@ -478,22 +663,6 @@ export const SongsView: React.FC<SongsViewProps> = ({
                 >
                   <Sparkles className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
                   <span>Get Metadata</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    const singleSong = songs.find((s) => selectedIds.has(s.id));
-                    if (singleSong) {
-                      setEditingSong(singleSong);
-                      setIsModalOpen(true);
-                    }
-                  }}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-700 hover:bg-slate-100 dark:hover:bg-slate-600 border border-slate-200 dark:border-slate-600 rounded-lg transition-colors cursor-pointer shadow-xs"
-                  title="Edit Song"
-                >
-                  <Edit2 className="w-3.5 h-3.5" />
-                  <span>Edit Song</span>
                 </button>
               </>
             )}
@@ -512,6 +681,46 @@ export const SongsView: React.FC<SongsViewProps> = ({
             >
               <Tag className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
               <span>Set Selected to Worship</span>
+            </button>
+
+            <button
+              onClick={() => handleBulkLanguageChange('English')}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-sky-700 dark:text-sky-300 bg-sky-50 dark:bg-sky-950/80 hover:bg-sky-100 dark:hover:bg-sky-900/60 border border-sky-200 dark:border-sky-800 rounded-lg transition-colors cursor-pointer shadow-xs"
+              title="Set selected song(s) language to English"
+            >
+              <Languages className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400" />
+              <span>Set Selected to English</span>
+            </button>
+
+            <button
+              onClick={() => handleBulkLanguageChange('Tagalog')}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/80 hover:bg-amber-100 dark:hover:bg-amber-900/60 border border-amber-200 dark:border-amber-800 rounded-lg transition-colors cursor-pointer shadow-xs"
+              title="Set selected song(s) language to Tagalog"
+            >
+              <Languages className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+              <span>Set Selected to Tagalog</span>
+            </button>
+
+            <button
+              onClick={() => handleBulkLanguageChange('Multi-lingual')}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-purple-700 dark:text-purple-300 bg-purple-50 dark:bg-purple-950/80 hover:bg-purple-100 dark:hover:bg-purple-900/60 border border-purple-200 dark:border-purple-800 rounded-lg transition-colors cursor-pointer shadow-xs"
+              title="Set selected song(s) language to Multi-lingual"
+            >
+              <Languages className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+              <span>Set Selected to Multi-lingual</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setFamilyToEdit(null);
+                setIsFamilyModalOpen(true);
+              }}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/80 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 border border-indigo-200 dark:border-indigo-800 rounded-lg transition-colors cursor-pointer shadow-xs"
+              title="Create Song Family from selected songs"
+            >
+              <Layers className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+              <span>Create Song Family</span>
             </button>
 
             <button
@@ -566,7 +775,7 @@ export const SongsView: React.FC<SongsViewProps> = ({
               </button>
             </div>
           </div>
-        ) : filteredSongs.length === 0 ? (
+        ) : sortedSongs.length === 0 ? (
           <div className="col-span-full p-12 text-center bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 space-y-3">
             <Music className="w-10 h-10 text-slate-300 dark:text-slate-600 mx-auto" />
             <p className="text-sm font-semibold text-slate-600 dark:text-slate-400">
@@ -574,7 +783,7 @@ export const SongsView: React.FC<SongsViewProps> = ({
             </p>
           </div>
         ) : (
-          filteredSongs.map((song, idx) => {
+          sortedSongs.map((song, idx) => {
             const timesUsedThisMonth = SongService.getMonthlyUsageCount(song.title, schedules);
             const isExpanded = expandedHistoryId === song.id;
             const selected = isSelected(song.id);
@@ -739,7 +948,7 @@ export const SongsView: React.FC<SongsViewProps> = ({
                         <span>New (Unused)</span>
                       </span>
                     ) : (
-                      <span>Last used: <strong>{song.lastUsedDate}</strong></span>
+                      <span>Last used: <strong>{song.lastUsedDate || 'Never played'}</strong></span>
                     )}
                   </div>
 
@@ -850,11 +1059,25 @@ export const SongsView: React.FC<SongsViewProps> = ({
         showToast={showToast}
       />
 
+      {/* Single Song Import Modal */}
+      <SingleSongImportModal
+        isOpen={isSingleSongImportOpen}
+        onClose={() => setIsSingleSongImportOpen(false)}
+        initialCategory="praise"
+        onImportComplete={() => {
+          onRefreshSongs();
+          loadFamilies();
+        }}
+        showToast={showToast}
+      />
+
       {/* Song Family Manager Modal */}
       <SongFamilyModal
         isOpen={isFamilyModalOpen}
         familyToEdit={familyToEdit}
+        initialSongs={familyToEdit ? undefined : songs.filter((s) => selectedIds.has(s.id))}
         allSongs={songs}
+        allFamilies={songFamilies}
         onClose={() => {
           setIsFamilyModalOpen(false);
           setFamilyToEdit(null);

@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Schedule, formatAssignmentMemberNames } from '../types';
+import { Schedule, formatAssignmentMemberNames, Song } from '../types';
 import { getScheduleRepeatedSongs, ensureMonthlyPlaceholders, isScheduleEmpty } from '../utils/scheduleUtils';
 import { formatDateDisplayManila, getManilaTodayString } from '../utils/dateUtils';
+import { resolveScheduleSongTitles } from '../utils/songResolveUtils';
 import { useMultiSelect } from '../hooks/useMultiSelect';
 import {
   CalendarDays,
@@ -23,6 +24,7 @@ import {
 
 interface SchedulesViewProps {
   schedules: Schedule[];
+  allSongs?: Song[];
   onEditSchedule: (schedule: Schedule) => void;
   onDuplicateSchedule: (schedule: Schedule) => void;
   onDeleteSchedule: (id: string) => void;
@@ -40,28 +42,30 @@ export type ScheduleSortOption =
  * Renders a clean preview of songs contained in a lineup with bullet points,
  * one song per line, and an expandable "Show More" option for long lists.
  */
-const LineupSongsPreview: React.FC<{ schedule: Schedule }> = ({ schedule }) => {
+const LineupSongsPreview: React.FC<{ schedule: Schedule; songsList?: Song[] }> = ({ schedule, songsList = [] }) => {
   const [isExpanded, setIsExpanded] = useState(false);
 
-  const praiseList = (schedule.praiseSongs || [])
-    .map((s, i) => ({
-      title: s.trim(),
+  const resolved = resolveScheduleSongTitles(schedule, songsList);
+
+  const praiseList = resolved.praiseSongs
+    .map((title, i) => ({
+      title: title.trim(),
       key: schedule.praiseSongKeys?.[i]?.trim(),
       type: 'Praise'
     }))
     .filter((item) => Boolean(item.title));
 
-  const worshipList = (schedule.worshipSongs || [])
-    .map((s, i) => ({
-      title: s.trim(),
+  const worshipList = resolved.worshipSongs
+    .map((title, i) => ({
+      title: title.trim(),
       key: schedule.worshipSongKeys?.[i]?.trim(),
       type: 'Worship'
     }))
     .filter((item) => Boolean(item.title));
 
-  const allSongs = [...praiseList, ...worshipList];
+  const previewSongs = [...praiseList, ...worshipList];
 
-  if (allSongs.length === 0) {
+  if (previewSongs.length === 0) {
     return (
       <div className="text-slate-400 dark:text-slate-500 italic text-xs py-1">
         No songs added yet
@@ -70,13 +74,13 @@ const LineupSongsPreview: React.FC<{ schedule: Schedule }> = ({ schedule }) => {
   }
 
   const limit = 3;
-  const visibleSongs = isExpanded ? allSongs : allSongs.slice(0, limit);
-  const hiddenCount = allSongs.length - limit;
+  const visibleSongs = isExpanded ? previewSongs : previewSongs.slice(0, limit);
+  const hiddenCount = previewSongs.length - limit;
 
   return (
     <div className="space-y-1 py-1">
       <div className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 dark:text-slate-500 flex items-center gap-1">
-        <span>Songs ({allSongs.length})</span>
+        <span>Songs ({previewSongs.length})</span>
       </div>
       <ul className="space-y-0.5 text-xs text-slate-800 dark:text-slate-200 font-medium">
         {visibleSongs.map((song, idx) => (
@@ -91,7 +95,7 @@ const LineupSongsPreview: React.FC<{ schedule: Schedule }> = ({ schedule }) => {
           </li>
         ))}
       </ul>
-      {allSongs.length > limit && (
+      {previewSongs.length > limit && (
         <button
           type="button"
           onClick={() => setIsExpanded(!isExpanded)}
@@ -107,6 +111,7 @@ const LineupSongsPreview: React.FC<{ schedule: Schedule }> = ({ schedule }) => {
 
 export const SchedulesView: React.FC<SchedulesViewProps> = ({
   schedules,
+  allSongs = [],
   onEditSchedule,
   onDuplicateSchedule,
   onDeleteSchedule,
@@ -213,8 +218,9 @@ export const SchedulesView: React.FC<SchedulesViewProps> = ({
         const terms = cleanQ.split(' ');
         const serviceLower = s.serviceType.toLowerCase();
         const dateLower = (s.serviceDate || '').toLowerCase();
-        const praiseLower = (s.praiseSongs || []).map((p) => p.toLowerCase());
-        const worshipLower = (s.worshipSongs || []).map((w) => w.toLowerCase());
+        const resolved = resolveScheduleSongTitles(s, allSongs);
+        const praiseLower = (resolved.praiseSongs || []).map((p) => p.toLowerCase());
+        const worshipLower = (resolved.worshipSongs || []).map((w) => w.toLowerCase());
         const membersLower = (s.ministryAssignments || []).map(
           (m) => (formatAssignmentMemberNames(m) + ' ' + m.role).toLowerCase()
         );
@@ -729,7 +735,7 @@ export const SchedulesView: React.FC<SchedulesViewProps> = ({
                         </div>
                       </td>
                       <td className="py-4 px-4 align-top">
-                        <LineupSongsPreview schedule={schedule} />
+                        <LineupSongsPreview schedule={schedule} songsList={allSongs} />
                       </td>
                       <td className="py-4 px-4 whitespace-nowrap text-xs text-slate-600 dark:text-slate-300">
                         {leaderDisplay ? (

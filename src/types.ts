@@ -129,6 +129,8 @@ export interface Schedule {
   worshipSongs: string[];
   praiseSongKeys?: string[];
   worshipSongKeys?: string[];
+  praiseSongIds?: string[];
+  worshipSongIds?: string[];
   ministryAssignments: MinistryAssignment[];
   notes?: string;
   updatedAt: string;
@@ -211,6 +213,29 @@ export interface Song {
   songwriters?: string;
   composers?: string[];
   originalArtist?: string;
+}
+
+export type SongConflictType =
+  | 'SAME_TITLE_SAME_ARTIST'
+  | 'SAME_TITLE_DIFF_ARTIST'
+  | 'SAME_VIDEO_MATCH'
+  | 'DIFF_TITLE_POSSIBLE_COMPOSITION'
+  | 'NO_CONFLICT';
+
+export interface SongConflictResult {
+  hasConflict: boolean;
+  conflictType: SongConflictType;
+  matchType?: 'title' | 'artist_title' | 'youtubeId' | 'youtubeUrl' | 'composition';
+  existingSong?: Song;
+  evidence?: {
+    confidence: 'high' | 'medium' | 'low';
+    score: number;
+    reasons: string[];
+    suggestedRelationship: SongRelationshipType;
+  };
+  hasStrongEvidence?: boolean;
+  suggestedRelationship?: SongRelationshipType;
+  isDuplicate?: boolean; // Backward compatibility
 }
 
 export interface ToastMessage {

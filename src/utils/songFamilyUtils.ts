@@ -140,16 +140,38 @@ export function verifySongIdentity(songA: Song, songB: Song): SongMatchEvidence 
 
   if (!exactBaseTitle) {
     // If base titles don't match, check if one contains the other
-    if (baseTitleA.includes(baseTitleB) || baseTitleB.includes(baseTitleA)) {
+    if (baseTitleA && baseTitleB && (baseTitleA.includes(baseTitleB) || baseTitleB.includes(baseTitleA))) {
       score += 20;
       reasons.push(`Base titles closely match ("${baseTitleA}" / "${baseTitleB}")`);
     } else {
-      return {
-        confidence: 'low',
-        score: 0,
-        reasons: ['Base titles do not match'],
-        suggestedRelationship: 'UNKNOWN'
-      };
+      // Check if other metadata confirms same composition despite different titles
+      const ccliMatch = songA.ccliNumber && songB.ccliNumber && songA.ccliNumber === songB.ccliNumber;
+      const writersA = (songA.songwriters || (songA.composers ? songA.composers.join(', ') : '')).trim().toLowerCase();
+      const writersB = (songB.songwriters || (songB.composers ? songB.composers.join(', ') : '')).trim().toLowerCase();
+      const writersMatch = writersA && writersB && (writersA === writersB || writersA.includes(writersB) || writersB.includes(writersA));
+      const lyricSim = songA.lyrics && songB.lyrics ? calculateLyricsSimilarity(songA.lyrics, songB.lyrics) : 0;
+
+      if (ccliMatch) {
+        score += 60;
+        reasons.push(`Identical CCLI song registration number: #${songA.ccliNumber}`);
+      }
+      if (writersMatch) {
+        score += 35;
+        reasons.push(`Matching songwriter/composer credits: "${songA.songwriters || writersA}"`);
+      }
+      if (lyricSim >= 0.35) {
+        score += Math.round(lyricSim * 50);
+        reasons.push(`Matching lyrics content (${Math.round(lyricSim * 100)}% match)`);
+      }
+
+      if (score < 40) {
+        return {
+          confidence: 'low',
+          score: 0,
+          reasons: ['Titles and composition metadata do not match'],
+          suggestedRelationship: 'UNKNOWN'
+        };
+      }
     }
   } else {
     score += 40;

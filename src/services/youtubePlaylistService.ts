@@ -535,21 +535,22 @@ export class YouTubePlaylistService {
       const assignedCategory: 'praise' | 'worship' = idx < 2 ? 'praise' : 'worship';
 
       try {
-        // Duplicate check against Song Database (checking Video ID, YouTube URL, and Title)
-        const dupMatch = await SongService.findDuplicate({
+        // Duplicate check against Song Database (checking Video ID, YouTube URL, Artist, and Title)
+        const dupMatch = await SongService.detectSongConflict({
           title: item.title,
+          artist: item.artist,
           youtubeId: item.videoId,
           youtubeUrl: item.youtubeUrl
         });
 
-        if (dupMatch.isDuplicate && dupMatch.existingSong) {
-          // Duplicate found! Update existing song record category and metadata
+        if (dupMatch.hasConflict && dupMatch.existingSong && dupMatch.conflictType !== 'SAME_TITLE_DIFF_ARTIST') {
+          // Exact or same-artist duplicate found! Update existing song record without losing existing metadata
           const existing = dupMatch.existingSong;
-          console.log(`[YouTubePlaylistService] Duplicate detected for "${item.title}" (Match type: ${dupMatch.matchType}). Updating existing record ID: ${existing.id} with category ${assignedCategory}`);
+          console.log(`[YouTubePlaylistService] Same-artist duplicate detected for "${item.title}" (Match type: ${dupMatch.matchType}). Updating existing record ID: ${existing.id}`);
 
           const updatedSong = await SongService.saveSong({
             ...existing,
-            category: assignedCategory,
+            category: existing.category || assignedCategory,
             artist: existing.artist && existing.artist !== 'Unknown Artist' ? existing.artist : item.artist,
             key: existing.key || '',
             originalKey: existing.originalKey || '',
@@ -567,7 +568,7 @@ export class YouTubePlaylistService {
           summary.existingSongTitles.push(existing.title);
           importedSongs.push(updatedSong);
         } else {
-          // Save new song into database (without auto-assigning key, BPM, or time signature)
+          // Save new separate song into database
           console.log(`[YouTubePlaylistService] Creating new song record for "${item.title}" by ${item.artist} with category ${assignedCategory}`);
           const newSong = await SongService.saveSong({
             title: item.title,

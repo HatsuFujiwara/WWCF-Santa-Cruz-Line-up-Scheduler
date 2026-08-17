@@ -455,6 +455,7 @@ export default function App() {
             <DashboardView
               members={members}
               schedules={schedules}
+              allSongs={songs}
               setActiveTab={setActiveTab}
               onEditSchedule={handleEditScheduleFromList}
             />
@@ -491,6 +492,7 @@ export default function App() {
           {activeTab === 'schedules' && (
             <SchedulesView
               schedules={schedules}
+              allSongs={songs}
               onEditSchedule={handleEditScheduleFromList}
               onDuplicateSchedule={handleDuplicateSchedule}
               onDeleteSchedule={handleDeleteSchedule}

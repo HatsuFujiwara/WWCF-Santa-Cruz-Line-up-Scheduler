@@ -3,6 +3,7 @@ import { DEFAULT_LABELS, DEFAULT_MEMBERS, DEFAULT_SCHEDULES } from '../data/seed
 import { dataRepository } from './data';
 import { sortTags } from '../utils/tagUtils';
 import { getManilaNowISO } from '../utils/dateUtils';
+import { syncSchedulesWithAuthoritativeSongs } from '../utils/songResolveUtils';
 
 export type GuideAutoShowMode = 'first_visit' | 'every_time' | 'never';
 
@@ -181,7 +182,25 @@ export class StorageService {
     try {
       const data = localStorage.getItem(STORAGE_KEYS.SCHEDULES);
       const raw: Schedule[] = data ? JSON.parse(data) : DEFAULT_SCHEDULES;
-      const sanitized = sanitizeSchedules(raw);
+      let sanitized = sanitizeSchedules(raw);
+
+      // Auto-sync with authoritative songs database
+      try {
+        const songData = localStorage.getItem('wwcf_songs_v1');
+        if (songData) {
+          const songs = JSON.parse(songData);
+          if (Array.isArray(songs) && songs.length > 0) {
+            const { updatedSchedules, hasChanges } = syncSchedulesWithAuthoritativeSongs(sanitized, songs);
+            if (hasChanges) {
+              sanitized = updatedSchedules;
+              localStorage.setItem(STORAGE_KEYS.SCHEDULES, JSON.stringify(sanitized));
+            }
+          }
+        }
+      } catch (e) {
+        // Fallback gracefully
+      }
+
       if (JSON.stringify(raw) !== JSON.stringify(sanitized)) {
         try {
           localStorage.setItem(STORAGE_KEYS.SCHEDULES, JSON.stringify(sanitized));

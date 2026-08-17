@@ -186,17 +186,50 @@ export const INTERACTIVE_GUIDE_STEPS: TourStep[] = [
   {
     id: 8,
     sectionTitle: 'Basic Guide',
-    stepTitle: 'Export Line-up (Optional)',
+    stepTitle: 'Export Your Line-up',
     targetTab: 'scheduler',
-    targetSelector: '[data-tour="export-pdf-btn"]',
-    actionPrompt: 'Line-up Saved Successfully! Would you like to export it?',
+    targetSelector: '[data-tour="export-buttons-pair"]',
+    actionPrompt: 'Choose Export as PDF for a printable document or Export as PNG for a high-resolution image.',
     actionType: 'none',
-    description: 'Your lineup has been saved. Would you like to export it as PDF or PNG?',
+    description: 'Choose Export as PDF for a printable document or Export as PNG for a high-resolution image.',
     bullets: [
       'Export PDF for printable worship team sheets.',
-      'Export PNG for sharing on mobile messaging apps.'
+      'Export PNG for sharing on mobile messaging apps.',
+      'Skip Export to complete the guide.'
     ],
     rule: 'Step 8: Export PDF / PNG or Skip Export.'
+  },
+  {
+    id: 81,
+    sectionTitle: 'Basic Guide',
+    stepTitle: 'Export PDF',
+    targetTab: 'scheduler',
+    targetSelector: '[data-tour="export-pdf-btn"]',
+    actionPrompt: 'Click "Export as PDF" to generate a formatted printable sheet.',
+    actionType: 'click',
+    description: 'Generate a formatted PDF document for printing.',
+    bullets: [
+      'Generates a formatted PDF document for printing.',
+      'Includes church header, song sequence, keys, and team roster assignments.',
+      'Automatically downloads the printable PDF document.'
+    ],
+    rule: 'Step 8A: Export PDF printable sheet.'
+  },
+  {
+    id: 82,
+    sectionTitle: 'Basic Guide',
+    stepTitle: 'Export PNG',
+    targetTab: 'scheduler',
+    targetSelector: '[data-tour="export-png-btn"]',
+    actionPrompt: 'Click "Export as PNG" to generate a high-resolution image.',
+    actionType: 'click',
+    description: 'Generate a high-resolution PNG image for sharing.',
+    bullets: [
+      'Generate a high-resolution PNG image for sharing.',
+      'Rendered in crisp 2x pixel density for phones and messaging apps.',
+      'Automatically downloads the high-resolution PNG image.'
+    ],
+    rule: 'Step 8B: Export PNG mobile image.'
   },
 
   // =========================================================================

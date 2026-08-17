@@ -1,6 +1,7 @@
 import { SongFamily, Song, SongRelationshipType, SongVersionRef } from '../types';
 import { SongService } from './songService';
 import { getManilaNowISO } from '../utils/dateUtils';
+import { getNormalizedBaseTitle } from '../utils/songFamilyUtils';
 
 const SONG_FAMILIES_STORAGE_KEY = 'wwcf_song_families_v1';
 
@@ -82,8 +83,24 @@ export class SongFamilyService {
       updatedAt: now
     };
 
-    families.push(newFamily);
-    await this.saveSongFamilies(families);
+    // If any song in cleanSongIds belonged to other families, unlink it from those families
+    families.forEach((otherFam) => {
+      const remainingVersionIds = otherFam.versionIds.filter((id) => !cleanSongIds.includes(id));
+      if (remainingVersionIds.length !== otherFam.versionIds.length) {
+        otherFam.versionIds = remainingVersionIds;
+        if (otherFam.versions) {
+          otherFam.versions = otherFam.versions.filter((v) => !cleanSongIds.includes(v.songId));
+        }
+        if (otherFam.originalSongId && cleanSongIds.includes(otherFam.originalSongId)) {
+          otherFam.originalSongId = remainingVersionIds.length > 0 ? remainingVersionIds[0] : undefined;
+        }
+        otherFam.updatedAt = now;
+      }
+    });
+
+    const remainingFamilies = families.filter((f) => f.versionIds.length > 0);
+    remainingFamilies.push(newFamily);
+    await this.saveSongFamilies(remainingFamilies);
 
     // Update songs with the new songFamilyId
     let songsModified = false;
@@ -127,7 +144,25 @@ export class SongFamilyService {
       families.push(cleanFamily);
     }
 
-    await this.saveSongFamilies(families);
+    // Unlink these songs from any other families
+    families.forEach((otherFam) => {
+      if (otherFam.id !== cleanFamily.id) {
+        const remainingVersionIds = otherFam.versionIds.filter((id) => !cleanFamily.versionIds.includes(id));
+        if (remainingVersionIds.length !== otherFam.versionIds.length) {
+          otherFam.versionIds = remainingVersionIds;
+          if (otherFam.versions) {
+            otherFam.versions = otherFam.versions.filter((v) => !cleanFamily.versionIds.includes(v.songId));
+          }
+          if (otherFam.originalSongId && cleanFamily.versionIds.includes(otherFam.originalSongId)) {
+            otherFam.originalSongId = remainingVersionIds.length > 0 ? remainingVersionIds[0] : undefined;
+          }
+          otherFam.updatedAt = now;
+        }
+      }
+    });
+
+    const activeFamilies = families.filter((f) => f.id === cleanFamily.id || f.versionIds.length > 0);
+    await this.saveSongFamilies(activeFamilies);
 
     // Sync song references
     let songsModified = false;
@@ -383,5 +418,74 @@ export class SongFamilyService {
     }
 
     return null;
+  }
+
+  /**
+   * Groups two songs into a Song Family with the specified relationship.
+   * Preserves all individual metadata on both songs without overwriting or deleting either record.
+   */
+  static async linkSongPair(params: {
+    existingSong: Song;
+    newSong: Song;
+    relationship: SongRelationshipType;
+    isNewSongOriginal?: boolean;
+  }): Promise<SongFamily> {
+    const { existingSong, newSong, relationship, isNewSongOriginal } = params;
+    const families = await this.getSongFamilies();
+
+    // Check if existingSong already belongs to a family
+    const existingFamily = existingSong.songFamilyId
+      ? families.find((f) => f.id === existingSong.songFamilyId)
+      : families.find((f) => f.versionIds.includes(existingSong.id));
+
+    if (existingFamily) {
+      // Add newSong to existing family
+      if (!existingFamily.versionIds.includes(newSong.id)) {
+        existingFamily.versionIds.push(newSong.id);
+      }
+      if (!existingFamily.versions) {
+        existingFamily.versions = [];
+      }
+      const vIdx = existingFamily.versions.findIndex((v) => v.songId === newSong.id);
+      if (vIdx >= 0) {
+        existingFamily.versions[vIdx].relationshipType = relationship;
+      } else {
+        existingFamily.versions.push({
+          songId: newSong.id,
+          relationshipType: relationship,
+          confidence: 'high'
+        });
+      }
+
+      if (isNewSongOriginal || relationship === 'ORIGINAL') {
+        existingFamily.originalSongId = newSong.id;
+        const oldOrigVer = existingFamily.versions.find((v) => v.songId === existingSong.id);
+        if (oldOrigVer && oldOrigVer.relationshipType === 'ORIGINAL') {
+          oldOrigVer.relationshipType = 'VERSION';
+        }
+      }
+
+      return await this.updateSongFamily(existingFamily);
+    }
+
+    // Neither had a family - create a new family named after canonical base title
+    const canonicalName = getNormalizedBaseTitle(existingSong.title) || existingSong.title;
+    const isNewOrig = isNewSongOriginal || relationship === 'ORIGINAL';
+
+    return await this.createSongFamily({
+      name: canonicalName,
+      songIds: [existingSong.id, newSong.id],
+      originalSongId: isNewOrig ? newSong.id : existingSong.id,
+      versions: [
+        {
+          songId: isNewOrig ? newSong.id : existingSong.id,
+          relationshipType: 'ORIGINAL'
+        },
+        {
+          songId: isNewOrig ? existingSong.id : newSong.id,
+          relationshipType: isNewOrig ? 'VERSION' : relationship
+        }
+      ]
+    });
   }
 }

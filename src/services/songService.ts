@@ -1,17 +1,16 @@
-import { Song, Schedule, SongCategory, SongFamily } from '../types';
+import { Song, Schedule, SongCategory, SongFamily, SongConflictResult, SongConflictType, SongRelationshipType } from '../types';
 import { DEFAULT_SONGS } from '../data/songSeedData';
 import { getManilaTodayString, getManilaNowISO } from '../utils/dateUtils';
 import { isFirstRegularServiceOfMonth, getLastRegularSchedulesOfPreviousMonth } from '../utils/scheduleUtils';
 import { isSpecialEvent, isFirstWeekOfMonth, getLastWeekOfPreviousMonthRange } from '../utils/recommendationUtils';
 import { sanitizeSongLanguage, detectSongLanguage } from '../utils/languageUtils';
+import { getNormalizedBaseTitle, areArtistsEquivalent, verifySongIdentity, calculateLyricsSimilarity } from '../utils/songFamilyUtils';
+import { StorageService } from './storage';
+import { syncSchedulesOnSongRename } from '../utils/songResolveUtils';
 
 const SONGS_STORAGE_KEY = 'wwcf_songs_v1';
 
-export interface DuplicateMatch {
-  isDuplicate: boolean;
-  matchType?: 'title' | 'youtubeId' | 'youtubeUrl';
-  existingSong?: Song;
-}
+export type DuplicateMatch = SongConflictResult;
 
 export interface YouTubeMetadataResult {
   youtubeId: string;
@@ -88,7 +87,7 @@ export class SongService {
               const detected = detectSongLanguage(s.title, s.lyrics);
               return {
                 ...s,
-                language: detected.confidence === 'high' ? detected.language : 'Other / Unknown'
+                language: detected.confidence === 'high' ? detected.language : 'Tagalog'
               };
             }
             return {
@@ -111,17 +110,42 @@ export class SongService {
   }
 
   /**
+   * Bulk updates language for multiple songs by ID array without modifying other fields
+   */
+  static async bulkUpdateLanguage(ids: string[], language: string): Promise<void> {
+    if (!ids || ids.length === 0) return;
+    const songs = await this.getSongs();
+    const idSet = new Set(ids.map((id) => id.trim()));
+    let modified = false;
+
+    for (const song of songs) {
+      if (idSet.has(song.id)) {
+        song.language = language;
+        modified = true;
+      }
+    }
+
+    if (modified) {
+      localStorage.setItem(SONGS_STORAGE_KEY, JSON.stringify(songs));
+    }
+  }
+
+  /**
    * Saves or updates a song in the database
    */
   static async saveSong(songData: Partial<Song> & { title: string }): Promise<Song> {
     const songs = await this.getSongs();
     let savedSong: Song;
+    let oldTitle: string | undefined = undefined;
 
     const sanitizedLang = sanitizeSongLanguage(songData.language || 'English');
 
     if (songData.id) {
       // Update existing
       const index = songs.findIndex((s) => s.id === songData.id);
+      const existing = index >= 0 ? songs[index] : undefined;
+      oldTitle = existing?.title;
+
       savedSong = {
         id: songData.id,
         title: songData.title.trim(),
@@ -152,10 +176,10 @@ export class SongService {
         composers: songData.composers,
         originalArtist: songData.originalArtist,
         lyrics: songData.lyrics,
-        dateAdded: songData.dateAdded || getManilaTodayString(),
-        lastUsedDate: songData.lastUsedDate,
-        timesUsed: songData.timesUsed ?? 0,
-        serviceHistory: songData.serviceHistory || [],
+        dateAdded: songData.dateAdded || existing?.dateAdded || getManilaTodayString(),
+        lastUsedDate: songData.lastUsedDate !== undefined ? songData.lastUsedDate : existing?.lastUsedDate,
+        timesUsed: songData.timesUsed !== undefined ? songData.timesUsed : (existing?.timesUsed ?? 0),
+        serviceHistory: songData.serviceHistory || existing?.serviceHistory || [],
         notes: songData.notes || '',
         category: songData.category || 'both',
         labels: songData.labels || [],
@@ -214,6 +238,64 @@ export class SongService {
     }
 
     localStorage.setItem(SONGS_STORAGE_KEY, JSON.stringify(songs));
+
+    // Propagate song title update across all schedules and draft
+    if (songData.id) {
+      try {
+        const existingSchedules = StorageService.getSchedules();
+        const { updatedSchedules, hasChanges } = syncSchedulesOnSongRename(oldTitle, savedSong, existingSchedules);
+
+        if (hasChanges) {
+          StorageService.saveSchedules(updatedSchedules);
+        }
+
+        // Also update active draft if present
+        const draft = StorageService.getDraftSchedule();
+        if (draft) {
+          let draftModified = false;
+          const draftPraise = (draft.praiseSongs || []).map((t, idx) => {
+            const songId = (draft as any).praiseSongIds?.[idx];
+            if (songId === savedSong.id || (oldTitle && t.trim().toLowerCase() === oldTitle.trim().toLowerCase())) {
+              draftModified = true;
+              return savedSong.title;
+            }
+            return t;
+          });
+
+          const draftWorship = (draft.worshipSongs || []).map((t, idx) => {
+            const songId = (draft as any).worshipSongIds?.[idx];
+            if (songId === savedSong.id || (oldTitle && t.trim().toLowerCase() === oldTitle.trim().toLowerCase())) {
+              draftModified = true;
+              return savedSong.title;
+            }
+            return t;
+          });
+
+          if (draftModified) {
+            StorageService.saveDraftSchedule({
+              ...draft,
+              praiseSongs: draftPraise,
+              worshipSongs: draftWorship
+            });
+          }
+        }
+
+        // Recalculate usage statistics
+        await this.syncSongUsageFromSchedules(hasChanges ? updatedSchedules : existingSchedules);
+
+        // Notify app components of rename synchronization
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('wwcf:song-renamed', {
+            detail: { song: savedSong, oldTitle }
+          }));
+          window.dispatchEvent(new CustomEvent('wwcf:schedules-updated'));
+          window.dispatchEvent(new CustomEvent('wwcf:songs-updated'));
+        }
+      } catch (err) {
+        console.error('Error synchronizing song rename across schedules:', err);
+      }
+    }
+
     return savedSong;
   }
 
@@ -286,39 +368,186 @@ export class SongService {
   }
 
   /**
-   * Checks database for duplicate song by Title, YouTube ID, or YouTube URL
+   * Evaluates title, artist, songwriter, lyrics, CCLI, and video references
+   * to detect exact duplicates vs. same title with different artist conflict
+   * vs. related cross-title composition match.
+   */
+  static async detectSongConflict(query: {
+    title?: string;
+    artist?: string;
+    originalArtist?: string;
+    songwriters?: string;
+    album?: string;
+    lyrics?: string;
+    ccliNumber?: string;
+    youtubeUrl?: string;
+    youtubeId?: string;
+    excludeId?: string;
+  }): Promise<SongConflictResult> {
+    const songs = await this.getSongs();
+    const queryTitle = (query.title || '').trim();
+    const queryTitleLower = queryTitle.toLowerCase();
+    const queryBaseTitleLower = getNormalizedBaseTitle(queryTitle).toLowerCase();
+    const queryArtist = (query.artist || '').trim();
+    const cleanYtId = query.youtubeId || (query.youtubeUrl ? extractYouTubeId(query.youtubeUrl) : null);
+    const cleanYtUrl = query.youtubeUrl ? query.youtubeUrl.trim().toLowerCase() : '';
+
+    if (!queryTitle && !cleanYtId && !cleanYtUrl && !query.ccliNumber) {
+      return { hasConflict: false, conflictType: 'NO_CONFLICT', isDuplicate: false };
+    }
+
+    const candidateMock: Song = {
+      id: query.excludeId || 'temp_candidate',
+      title: queryTitle || 'Untitled',
+      artist: queryArtist || 'Unknown Artist',
+      album: query.album,
+      originalArtist: query.originalArtist,
+      songwriters: query.songwriters,
+      lyrics: query.lyrics,
+      ccliNumber: query.ccliNumber,
+      youtubeUrl: query.youtubeUrl,
+      youtubeId: cleanYtId || undefined,
+      language: 'English',
+      category: 'praise',
+      timesUsed: 0,
+      serviceHistory: [],
+      dateAdded: ''
+    };
+
+    // 1. First check matching YouTube video ID / URL
+    for (const song of songs) {
+      if (query.excludeId && song.id === query.excludeId) continue;
+
+      const ytIdMatches = cleanYtId && song.youtubeId && song.youtubeId === cleanYtId;
+      const ytUrlMatches = cleanYtUrl && song.youtubeUrl && song.youtubeUrl.trim().toLowerCase() === cleanYtUrl;
+
+      if (ytIdMatches || ytUrlMatches) {
+        const isSameArtist = areArtistsEquivalent(song.artist, queryArtist);
+        const evidence = verifySongIdentity(song, candidateMock);
+        return {
+          hasConflict: true,
+          conflictType: isSameArtist ? 'SAME_TITLE_SAME_ARTIST' : 'SAME_VIDEO_MATCH',
+          matchType: ytIdMatches ? 'youtubeId' : 'youtubeUrl',
+          existingSong: song,
+          isDuplicate: true,
+          evidence,
+          hasStrongEvidence: true,
+          suggestedRelationship: isSameArtist ? 'VERSION' : 'COVER'
+        };
+      }
+    }
+
+    // 2. Check title matches (exact title or normalized base title match)
+    for (const song of songs) {
+      if (query.excludeId && song.id === query.excludeId) continue;
+      if (!queryTitle) continue;
+
+      const songTitleLower = song.title.trim().toLowerCase();
+      const songBaseTitleLower = getNormalizedBaseTitle(song.title).toLowerCase();
+
+      const exactTitleMatch = queryTitleLower === songTitleLower;
+      const baseTitleMatch = queryBaseTitleLower && (queryBaseTitleLower === songBaseTitleLower);
+
+      if (exactTitleMatch || baseTitleMatch) {
+        const isSameArtist = areArtistsEquivalent(song.artist, queryArtist);
+        const evidence = verifySongIdentity(song, candidateMock);
+
+        const hasMatchingCredits = !!(
+          (song.songwriters && query.songwriters && (song.songwriters.toLowerCase().includes(query.songwriters.toLowerCase()) || query.songwriters.toLowerCase().includes(song.songwriters.toLowerCase()))) ||
+          (song.originalArtist && queryArtist && areArtistsEquivalent(song.originalArtist, queryArtist)) ||
+          (query.originalArtist && song.artist && areArtistsEquivalent(query.originalArtist, song.artist))
+        );
+        const lyricsSim = (song.lyrics && query.lyrics) ? calculateLyricsSimilarity(song.lyrics, query.lyrics) : 0;
+        const hasStrongEvidence = evidence.confidence === 'high' || hasMatchingCredits || lyricsSim >= 0.35 || !!(song.ccliNumber && query.ccliNumber && song.ccliNumber === query.ccliNumber);
+
+        if (isSameArtist) {
+          return {
+            hasConflict: true,
+            conflictType: 'SAME_TITLE_SAME_ARTIST',
+            matchType: 'artist_title',
+            existingSong: song,
+            isDuplicate: true,
+            evidence,
+            hasStrongEvidence,
+            suggestedRelationship: evidence.suggestedRelationship || 'VERSION'
+          };
+        } else {
+          // SAME TITLE, DIFFERENT ARTIST -> NEVER treat as automatic duplicate or overwrite!
+          return {
+            hasConflict: true,
+            conflictType: 'SAME_TITLE_DIFF_ARTIST',
+            matchType: 'title',
+            existingSong: song,
+            isDuplicate: true,
+            evidence,
+            hasStrongEvidence,
+            suggestedRelationship: evidence.suggestedRelationship || 'COVER'
+          };
+        }
+      }
+    }
+
+    // 3. Check composition match across DIFFERENT titles
+    for (const song of songs) {
+      if (query.excludeId && song.id === query.excludeId) continue;
+
+      // CCLI match
+      if (query.ccliNumber && song.ccliNumber && query.ccliNumber.trim() === song.ccliNumber.trim()) {
+        const evidence = verifySongIdentity(song, candidateMock);
+        return {
+          hasConflict: true,
+          conflictType: 'DIFF_TITLE_POSSIBLE_COMPOSITION',
+          matchType: 'composition',
+          existingSong: song,
+          isDuplicate: true,
+          evidence,
+          hasStrongEvidence: true,
+          suggestedRelationship: evidence.suggestedRelationship || 'VERSION'
+        };
+      }
+
+      // High lyrics match + matching songwriter/original artist
+      if (song.lyrics && query.lyrics) {
+        const sim = calculateLyricsSimilarity(song.lyrics, query.lyrics);
+        if (sim >= 0.40) {
+          const evidence = verifySongIdentity(song, candidateMock);
+          return {
+            hasConflict: true,
+            conflictType: 'DIFF_TITLE_POSSIBLE_COMPOSITION',
+            matchType: 'composition',
+            existingSong: song,
+            isDuplicate: true,
+            evidence,
+            hasStrongEvidence: true,
+            suggestedRelationship: evidence.suggestedRelationship || 'VERSION'
+          };
+        }
+      }
+    }
+
+    return {
+      hasConflict: false,
+      conflictType: 'NO_CONFLICT',
+      isDuplicate: false
+    };
+  }
+
+  /**
+   * Checks database for duplicate/conflicting song by Title, Artist, Lyrics, CCLI, or YouTube ID/URL
    */
   static async findDuplicate(query: {
     title?: string;
+    artist?: string;
+    originalArtist?: string;
+    songwriters?: string;
+    album?: string;
+    lyrics?: string;
+    ccliNumber?: string;
     youtubeUrl?: string;
     youtubeId?: string;
     excludeId?: string;
   }): Promise<DuplicateMatch> {
-    const songs = await this.getSongs();
-    const cleanTitle = query.title ? query.title.trim().toLowerCase() : '';
-    const cleanYtId = query.youtubeId || (query.youtubeUrl ? extractYouTubeId(query.youtubeUrl) : null);
-    const cleanYtUrl = query.youtubeUrl ? query.youtubeUrl.trim().toLowerCase() : '';
-
-    for (const song of songs) {
-      if (query.excludeId && song.id === query.excludeId) continue;
-
-      // Check YouTube ID match
-      if (cleanYtId && song.youtubeId && song.youtubeId === cleanYtId) {
-        return { isDuplicate: true, matchType: 'youtubeId', existingSong: song };
-      }
-
-      // Check YouTube URL match
-      if (cleanYtUrl && song.youtubeUrl && song.youtubeUrl.trim().toLowerCase() === cleanYtUrl) {
-        return { isDuplicate: true, matchType: 'youtubeUrl', existingSong: song };
-      }
-
-      // Check Title match (exact case-insensitive)
-      if (cleanTitle && song.title.trim().toLowerCase() === cleanTitle) {
-        return { isDuplicate: true, matchType: 'title', existingSong: song };
-      }
-    }
-
-    return { isDuplicate: false };
+    return this.detectSongConflict(query);
   }
 
   /**
@@ -407,7 +636,7 @@ export class SongService {
       }
     }
 
-    const matchedSong = (songs || []).find((s) => s.title.trim().toLowerCase() === cleanTitle);
+    const matchedSong = (songs || []).find((s) => s.id === cleanTitle || s.title.trim().toLowerCase() === cleanTitle);
     let targetFamily: SongFamily | undefined = undefined;
 
     if (matchedSong && matchedSong.songFamilyId) {
@@ -597,11 +826,14 @@ export class SongService {
 
     for (const song of songs) {
       const cleanTitle = song.title.trim().toLowerCase();
+      const songId = song.id;
       const history: { date: string; serviceType: string; scheduleId?: string }[] = [];
 
       schedules.forEach((sch) => {
-        const inPraise = (sch.praiseSongs || []).some((s) => s.trim().toLowerCase() === cleanTitle);
-        const inWorship = (sch.worshipSongs || []).some((s) => s.trim().toLowerCase() === cleanTitle);
+        const inPraise = (sch.praiseSongs || []).some((s) => s.trim().toLowerCase() === cleanTitle) ||
+                         (sch.praiseSongIds || []).some((id) => id === songId);
+        const inWorship = (sch.worshipSongs || []).some((s) => s.trim().toLowerCase() === cleanTitle) ||
+                          (sch.worshipSongIds || []).some((id) => id === songId);
         if (inPraise || inWorship) {
           history.push({
             date: sch.serviceDate,

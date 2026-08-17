@@ -127,8 +127,7 @@ export const GetMetadataModal: React.FC<GetMetadataModalProps> = ({
         songwriters: Boolean(meta.songwriters && meta.songwriters !== song.songwriters),
         language: Boolean(
           meta.language &&
-            meta.language !== sanitizeSongLanguage(song.language) &&
-            meta.language !== 'Other / Unknown'
+            meta.language !== sanitizeSongLanguage(song.language)
         ),
         lyrics: Boolean(meta.lyrics && meta.lyrics !== song.lyrics),
         originalKey: false // NEVER automatically checked
@@ -260,7 +259,7 @@ export const GetMetadataModal: React.FC<GetMetadataModalProps> = ({
   if (!isOpen || !song) return null;
 
   const currentLanguage = sanitizeSongLanguage(song.language);
-  const detectedLanguage = retrievedMeta?.language || 'Other / Unknown';
+  const detectedLanguage = retrievedMeta?.language || 'Multi-lingual';
 
   const isCheckedCount = Object.values(selectedFields).filter(Boolean).length;
 

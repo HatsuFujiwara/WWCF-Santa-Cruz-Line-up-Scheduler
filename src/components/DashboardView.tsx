@@ -1,8 +1,9 @@
 import React, { useMemo } from 'react';
-import { Member, Schedule, ActiveTab, formatAssignmentMemberNames, ServiceType } from '../types';
+import { Member, Schedule, ActiveTab, formatAssignmentMemberNames, ServiceType, Song } from '../types';
 import { formatDateDisplayManila } from '../utils/dateUtils';
 import { isScheduleEmpty } from '../utils/scheduleUtils';
 import { calculateSongAnalytics } from '../utils/songAnalyticsUtils';
+import { resolveScheduleSongTitles } from '../utils/songResolveUtils';
 import { MemberFavoriteSongsSection } from './MemberFavoriteSongsSection';
 import {
   Users,
@@ -21,6 +22,7 @@ import {
 interface DashboardViewProps {
   members: Member[];
   schedules: Schedule[];
+  allSongs?: Song[];
   setActiveTab: (tab: ActiveTab) => void;
   onEditSchedule: (schedule: Schedule) => void;
 }
@@ -28,6 +30,7 @@ interface DashboardViewProps {
 export const DashboardView: React.FC<DashboardViewProps> = ({
   members,
   schedules,
+  allSongs = [],
   setActiveTab,
   onEditSchedule,
 }) => {
@@ -563,7 +566,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                           ⚡ Praise Songs (Fast)
                         </span>
                         <p className="truncate text-slate-500 dark:text-slate-400">
-                          {schedule.praiseSongs.filter(Boolean).join(', ') || 'None'}
+                          {resolveScheduleSongTitles(schedule, allSongs).praiseSongs.filter(Boolean).join(', ') || 'None'}
                         </p>
                       </div>
                       <div>
@@ -571,7 +574,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                           ❤️ Worship Songs (Slow)
                         </span>
                         <p className="truncate text-slate-500 dark:text-slate-400">
-                          {schedule.worshipSongs.filter(Boolean).join(', ') || 'None'}
+                          {resolveScheduleSongTitles(schedule, allSongs).worshipSongs.filter(Boolean).join(', ') || 'None'}
                         </p>
                       </div>
                     </div>

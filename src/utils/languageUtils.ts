@@ -1,6 +1,6 @@
 import { ComprehensiveMetadata } from '../services/musicMetadataService';
 
-export type SongLanguage = 'English' | 'Tagalog' | 'Other / Unknown';
+export type SongLanguage = 'English' | 'Tagalog' | 'Multi-lingual';
 
 /**
  * Common high-frequency Tagalog / Filipino words and worship terms.
@@ -98,12 +98,12 @@ export interface LanguageDetectionResult {
 }
 
 /**
- * Detects whether a song's language is English, Tagalog, or Other / Unknown.
+ * Detects whether a song's language is English, Tagalog, or Multi-lingual.
  * Follows strict priority:
  * 1. Lyrics is the strongest indicator.
  * 2. Song title & metadata when lyrics are absent.
  * 3. Never rely solely on artist origin (e.g. Filipino artist singing English = English).
- * 4. Cebuano is completely removed and safely treated as Other / Unknown unless lyrics/title support Tagalog or English.
+ * 4. Mixed lyrics containing both English and Tagalog are classified as Multi-lingual.
  */
 export function detectSongLanguage(
   title: string,
@@ -130,19 +130,31 @@ export function detectSongLanguage(
       const tagalogRatio = tagalogCount / totalIdentified;
       const englishRatio = englishCount / totalIdentified;
 
-      if (tagalogRatio >= 0.58) {
+      // Both languages have substantial presence -> Multi-lingual
+      if (tagalogCount >= 2 && englishCount >= 2 && tagalogRatio >= 0.25 && englishRatio >= 0.25) {
+        return {
+          language: 'Multi-lingual',
+          confidence: totalIdentified >= 8 ? 'high' : 'medium',
+          dominantScore: 50,
+          reason: `Contains both Tagalog (${tagalogCount}) and English (${englishCount}) lyrics content.`,
+          tagalogMatchCount: tagalogCount,
+          englishMatchCount: englishCount
+        };
+      }
+
+      if (tagalogRatio >= 0.60) {
         return {
           language: 'Tagalog',
-          confidence: totalIdentified >= 10 ? 'high' : 'medium',
+          confidence: totalIdentified >= 8 ? 'high' : 'medium',
           dominantScore: Math.round(tagalogRatio * 100),
           reason: `Detected Tagalog based on lyrics vocabulary (${tagalogCount} Tagalog indicators vs ${englishCount} English).`,
           tagalogMatchCount: tagalogCount,
           englishMatchCount: englishCount
         };
-      } else if (englishRatio >= 0.58) {
+      } else if (englishRatio >= 0.60) {
         return {
           language: 'English',
-          confidence: totalIdentified >= 10 ? 'high' : 'medium',
+          confidence: totalIdentified >= 8 ? 'high' : 'medium',
           dominantScore: Math.round(englishRatio * 100),
           reason: `Detected English based on lyrics vocabulary (${englishCount} English indicators vs ${tagalogCount} Tagalog).`,
           tagalogMatchCount: tagalogCount,
@@ -150,10 +162,10 @@ export function detectSongLanguage(
         };
       } else {
         return {
-          language: 'Other / Unknown',
-          confidence: 'low',
+          language: 'Multi-lingual',
+          confidence: 'medium',
           dominantScore: 50,
-          reason: `Mixed multilingual lyrics without a clear dominant language (${tagalogCount} Tagalog, ${englishCount} English).`,
+          reason: `Mixed multilingual lyrics without a single dominant language (${tagalogCount} Tagalog, ${englishCount} English).`,
           tagalogMatchCount: tagalogCount,
           englishMatchCount: englishCount
         };
@@ -184,6 +196,17 @@ export function detectSongLanguage(
     if (ENGLISH_WORDS.has(t)) titleEnglish++;
   }
 
+  if (titleTagalog > 0 && titleEnglish > 0) {
+    return {
+      language: 'Multi-lingual',
+      confidence: 'medium',
+      dominantScore: 50,
+      reason: `Song title contains both Tagalog and English words.`,
+      tagalogMatchCount: titleTagalog,
+      englishMatchCount: titleEnglish
+    };
+  }
+
   if (titleTagalog > 0 && titleTagalog >= titleEnglish) {
     return {
       language: 'Tagalog',
@@ -209,6 +232,16 @@ export function detectSongLanguage(
   // 3. Fallback to metadata hints if provided
   if (metadata?.language) {
     const metaLang = metadata.language.toLowerCase();
+    if (metaLang.includes('multi') || metaLang.includes('taglish') || metaLang.includes('bilingual')) {
+      return {
+        language: 'Multi-lingual',
+        confidence: 'medium',
+        dominantScore: 70,
+        reason: `Metadata source indicated Multi-lingual song content.`,
+        tagalogMatchCount: 0,
+        englishMatchCount: 0
+      };
+    }
     if (metaLang.includes('tagalog') || metaLang.includes('filipino')) {
       return {
         language: 'Tagalog',
@@ -231,28 +264,29 @@ export function detectSongLanguage(
     }
   }
 
-  // 4. Default to Other / Unknown if not enough evidence
+  // 4. Default to English if no other markers detected
   return {
-    language: 'Other / Unknown',
+    language: 'English',
     confidence: 'low',
-    dominantScore: 0,
-    reason: `Insufficient linguistic markers in title or lyrics to confidently classify language.`,
+    dominantScore: 50,
+    reason: `Standard English default.`,
     tagalogMatchCount: 0,
     englishMatchCount: 0
   };
 }
 
 /**
- * Sanitizes existing stored language values, safely migrating legacy "Cebuano"
- * or missing strings to standard 'English' | 'Tagalog' | 'Other / Unknown'.
+ * Sanitizes existing stored language values, safely normalizing to
+ * 'English' | 'Tagalog' | 'Multi-lingual' or preserving custom/legacy values.
  */
-export function sanitizeSongLanguage(lang?: string): SongLanguage {
-  if (!lang) return 'Other / Unknown';
+export function sanitizeSongLanguage(lang?: string): string {
+  if (!lang) return 'English';
   const clean = lang.trim().toLowerCase();
   if (clean === 'english') return 'English';
   if (clean === 'tagalog' || clean === 'filipino') return 'Tagalog';
-  if (clean === 'cebuano' || clean === 'other' || clean === 'unknown' || clean === 'other / unknown') {
-    return 'Other / Unknown';
+  if (clean === 'multi-lingual' || clean === 'multilingual' || clean === 'taglish' || clean === 'bilingual') {
+    return 'Multi-lingual';
   }
-  return 'Other / Unknown';
+  return lang.trim();
 }
+

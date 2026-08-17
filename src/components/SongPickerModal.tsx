@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Song, Schedule } from '../types';
 import { SongService } from '../services/songService';
+import { sanitizeSongLanguage } from '../utils/languageUtils';
 import {
   Search,
   Music,
@@ -11,7 +12,8 @@ import {
   CalendarCheck,
   Flame,
   X,
-  ExternalLink
+  ExternalLink,
+  Youtube
 } from 'lucide-react';
 
 interface SongPickerModalProps {
@@ -25,6 +27,7 @@ interface SongPickerModalProps {
   onSelectSong: (songTitle: string) => void;
   onClose: () => void;
   onAddNewSong: () => void;
+  onImportYouTubeSong?: () => void;
 }
 
 export const SongPickerModal: React.FC<SongPickerModalProps> = ({
@@ -37,7 +40,8 @@ export const SongPickerModal: React.FC<SongPickerModalProps> = ({
   excludeScheduleId,
   onSelectSong,
   onClose,
-  onAddNewSong
+  onAddNewSong,
+  onImportYouTubeSong
 }) => {
   if (!isOpen) return null;
 
@@ -100,7 +104,9 @@ export const SongPickerModal: React.FC<SongPickerModalProps> = ({
   });
 
   // Extract keys and languages
-  const availableLanguages = Array.from(new Set(allSongs.map((s) => s.language).filter(Boolean)));
+  const availableLanguages = Array.from(
+    new Set(allSongs.map((s) => sanitizeSongLanguage(s.language)).filter(Boolean))
+  );
   const availableKeys = Array.from(new Set(allSongs.map((s) => s.key).filter(Boolean)));
 
   return (
@@ -313,18 +319,34 @@ export const SongPickerModal: React.FC<SongPickerModalProps> = ({
         </div>
 
         {/* Modal Footer */}
-        <div className="flex items-center justify-between pt-2 shrink-0 border-t border-slate-100 dark:border-slate-800">
-          <button
-            type="button"
-            onClick={() => {
-              onClose();
-              onAddNewSong();
-            }}
-            className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/80 hover:bg-indigo-100 dark:hover:bg-indigo-900/80 rounded-xl transition-colors cursor-pointer"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Add New Song to Library</span>
-          </button>
+        <div className="flex flex-wrap items-center justify-between gap-2 pt-2 shrink-0 border-t border-slate-100 dark:border-slate-800">
+          <div className="flex flex-wrap items-center gap-2">
+            {onImportYouTubeSong && (
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  onImportYouTubeSong();
+                }}
+                className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/80 hover:bg-red-100 dark:hover:bg-red-900/80 border border-red-200/80 dark:border-red-800/80 rounded-xl transition-colors cursor-pointer shadow-2xs"
+              >
+                <Youtube className="w-4 h-4 text-red-500" />
+                <span>Import from YouTube</span>
+              </button>
+            )}
+
+            <button
+              type="button"
+              onClick={() => {
+                onClose();
+                onAddNewSong();
+              }}
+              className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/80 hover:bg-indigo-100 dark:hover:bg-indigo-900/80 rounded-xl transition-colors cursor-pointer"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Add New Song to Library</span>
+            </button>
+          </div>
 
           <button
             type="button"

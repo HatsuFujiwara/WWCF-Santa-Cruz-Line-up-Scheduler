@@ -247,22 +247,70 @@ export const SongFormModal: React.FC<SongFormModalProps> = ({
       serviceHistory: songToEdit?.serviceHistory || []
     };
 
-    // Check duplicate
-    const dup = await SongService.findDuplicate({
+    // Check duplicate & title/artist conflicts
+    const conflict = await SongService.detectSongConflict({
       title: songDataToSave.title,
+      artist: songDataToSave.artist,
+      originalArtist: songDataToSave.originalArtist,
+      songwriters: songDataToSave.songwriters,
+      album: songDataToSave.album,
+      lyrics: songDataToSave.lyrics,
+      ccliNumber: songDataToSave.ccliNumber,
       youtubeId: songDataToSave.youtubeId,
       youtubeUrl: songDataToSave.youtubeUrl,
       excludeId: songToEdit?.id
     });
 
-    if (dup.isDuplicate && dup.existingSong) {
-      setDuplicateMatch(dup);
+    if (conflict.hasConflict && conflict.existingSong) {
+      setDuplicateMatch(conflict);
       setPendingSongData(songDataToSave);
       return;
     }
 
     // Direct save if no duplicate
     await executeSave(songDataToSave);
+  };
+
+  const handleSaveSeparate = async () => {
+    if (pendingSongData) {
+      const dataToSave = {
+        ...pendingSongData,
+        songFamilyId: pendingSongData.songFamilyId || undefined,
+        relationshipType: pendingSongData.relationshipType || undefined
+      };
+      await executeSave(dataToSave as Partial<Song> & { title: string });
+    }
+    setDuplicateMatch(null);
+    setPendingSongData(null);
+  };
+
+  const handleSaveRelated = async (relationship: SongRelationshipType) => {
+    if (pendingSongData && duplicateMatch?.existingSong) {
+      try {
+        const dataToSave = {
+          ...pendingSongData,
+          relationshipType: relationship
+        } as Partial<Song> & { title: string };
+
+        const savedSong = await SongService.saveSong(dataToSave);
+
+        await SongFamilyService.linkSongPair({
+          existingSong: duplicateMatch.existingSong,
+          newSong: savedSong,
+          relationship,
+          isNewSongOriginal: relationship === 'ORIGINAL'
+        });
+
+        onSave(savedSong);
+        showToast(`Saved and linked to "${duplicateMatch.existingSong.title}" Song Family as ${relationship}!`, 'success');
+        onClose();
+      } catch (err) {
+        console.error('Failed to link related song:', err);
+        showToast('Failed to save related song.', 'danger');
+      }
+    }
+    setDuplicateMatch(null);
+    setPendingSongData(null);
   };
 
   const executeSave = async (data: Partial<Song> & { title: string }) => {
@@ -536,7 +584,7 @@ export const SongFormModal: React.FC<SongFormModalProps> = ({
                 >
                   <option value="English">English</option>
                   <option value="Tagalog">Tagalog</option>
-                  <option value="Other / Unknown">Other / Unknown</option>
+                  <option value="Multi-lingual">Multi-lingual</option>
                 </select>
               </div>
 
@@ -785,23 +833,31 @@ export const SongFormModal: React.FC<SongFormModalProps> = ({
         </div>
       </div>
 
-      {/* Duplicate Song Modal */}
+      {/* Duplicate Song / Title Conflict Modal */}
       {duplicateMatch && duplicateMatch.existingSong && pendingSongData && (
         <DuplicateSongModal
           isOpen={!!duplicateMatch}
+          conflictResult={duplicateMatch}
           matchType={duplicateMatch.matchType}
           existingSong={duplicateMatch.existingSong}
+          candidateSong={{
+            title: pendingSongData.title || title,
+            artist: pendingSongData.artist || artist,
+            key: pendingSongData.key || key,
+            album: pendingSongData.album || album,
+            originalArtist: pendingSongData.originalArtist || originalArtist,
+            songwriters: pendingSongData.songwriters || songwriters,
+            lyrics: pendingSongData.lyrics || lyrics,
+            category: pendingSongData.category || category,
+            thumbnailUrl: pendingSongData.thumbnailUrl || thumbnailUrl
+          }}
           onCancel={() => {
             setDuplicateMatch(null);
             setPendingSongData(null);
           }}
-          onContinueAnyway={() => {
-            if (pendingSongData) {
-              executeSave(pendingSongData as Partial<Song> & { title: string });
-            }
-            setDuplicateMatch(null);
-            setPendingSongData(null);
-          }}
+          onSaveSeparate={handleSaveSeparate}
+          onSaveRelated={handleSaveRelated}
+          onContinueAnyway={handleSaveSeparate}
           onViewExisting={(song) => {
             setDuplicateMatch(null);
             setPendingSongData(null);

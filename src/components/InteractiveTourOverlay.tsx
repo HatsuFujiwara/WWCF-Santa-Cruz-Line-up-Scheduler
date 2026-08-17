@@ -11,7 +11,9 @@ import {
   Compass,
   CheckCircle2,
   ArrowRight,
-  Download
+  Download,
+  FileDown,
+  Image
 } from 'lucide-react';
 
 interface InteractiveTourOverlayProps {
@@ -203,6 +205,25 @@ export const InteractiveTourOverlay: React.FC<InteractiveTourOverlayProps> = ({
       }
     }
 
+    // Basic Guide Step 8 (Choice) vs 81 (PDF) vs 82 (PNG)
+    if (s.id === 8) {
+      if (document.querySelector('[data-tour="export-buttons-pair"]')) return '[data-tour="export-buttons-pair"]';
+      if (document.querySelector('[data-guide="export-pdf"]')) return '[data-tour="export-buttons-pair"]';
+      return '[data-tour="export-buttons-pair"]';
+    }
+
+    if (s.id === 81 || s.id === 301) {
+      if (document.querySelector('[data-tour="export-pdf-btn"]')) return '[data-tour="export-pdf-btn"]';
+      if (document.querySelector('[data-tour="export-pdf"]')) return '[data-tour="export-pdf"]';
+      return '[data-tour="export-pdf-btn"]';
+    }
+
+    if (s.id === 82 || s.id === 302) {
+      if (document.querySelector('[data-tour="export-png-btn"]')) return '[data-tour="export-png-btn"]';
+      if (document.querySelector('[data-tour="export-png"]')) return '[data-tour="export-png"]';
+      return '[data-tour="export-png-btn"]';
+    }
+
     // Exporting Lineups Guide (300–303)
     if (s.id >= 300 && s.id <= 303) {
       if (document.querySelector(s.targetSelector)) return s.targetSelector;
@@ -278,6 +299,24 @@ export const InteractiveTourOverlay: React.FC<InteractiveTourOverlayProps> = ({
     if (!isOpen || !step) {
       setTargetRect(null);
       return;
+    }
+
+    // Step 8: Spotlight tightly surrounds ONLY the two export buttons (PDF & PNG)
+    if (step.id === 8) {
+      const pdfBtn = document.querySelector('[data-guide="export-pdf"]') || document.querySelector('[data-tour="export-pdf-btn"]');
+      const pngBtn = document.querySelector('[data-guide="export-png"]') || document.querySelector('[data-tour="export-png-btn"]');
+      if (pdfBtn && pngBtn) {
+        const r1 = pdfBtn.getBoundingClientRect();
+        const r2 = pngBtn.getBoundingClientRect();
+        if (r1.width > 0 && r2.width > 0) {
+          const top = Math.min(r1.top, r2.top);
+          const left = Math.min(r1.left, r2.left);
+          const right = Math.max(r1.right, r2.right);
+          const bottom = Math.max(r1.bottom, r2.bottom);
+          setTargetRect(new DOMRect(left, top, right - left, bottom - top));
+          return;
+        }
+      }
     }
 
     const targetSelector = resolveTargetSelector(step);
@@ -520,6 +559,39 @@ export const InteractiveTourOverlay: React.FC<InteractiveTourOverlayProps> = ({
     };
   }, [isOpen, step]);
 
+  // Listen for lineup-exported-success to advance Step 81 / 82 / 301 / 302
+  useEffect(() => {
+    if (!isOpen || !step) return;
+
+    const handleExportSuccess = (e: Event) => {
+      const customEvt = e as CustomEvent<{ type?: 'pdf' | 'png' }>;
+      const exportType = customEvt.detail?.type;
+
+      if (step.id === 81 && exportType === 'pdf') {
+        handleComplete();
+      } else if (step.id === 82 && exportType === 'png') {
+        handleComplete();
+      } else if (step.id === 8) {
+        handleComplete();
+      } else if (step.id === 301 && exportType === 'pdf') {
+        const idx302 = INTERACTIVE_GUIDE_STEPS.findIndex((s) => s.id === 302);
+        if (idx302 !== -1) {
+          goToStep(idx302);
+        }
+      } else if (step.id === 302 && exportType === 'png') {
+        const idx303 = INTERACTIVE_GUIDE_STEPS.findIndex((s) => s.id === 303);
+        if (idx303 !== -1) {
+          goToStep(idx303);
+        }
+      }
+    };
+
+    window.addEventListener('lineup-exported-success', handleExportSuccess);
+    return () => {
+      window.removeEventListener('lineup-exported-success', handleExportSuccess);
+    };
+  }, [isOpen, step]);
+
   // Listen to user interaction on target element dynamically (non-blocking capture phase)
   useEffect(() => {
     if (!isOpen || !step || step.actionType === 'none') return;
@@ -549,6 +621,23 @@ export const InteractiveTourOverlay: React.FC<InteractiveTourOverlayProps> = ({
         if ((loadBtn && (loadBtn === eventTarget || loadBtn.contains(eventTarget))) ||
             (createBtn && (createBtn === eventTarget || createBtn.contains(eventTarget))) ||
             (conflictBtn && (conflictBtn === eventTarget || conflictBtn.contains(eventTarget)))) {
+          isTargetMatch = true;
+        }
+      } else if (step.id === 8) {
+        const pdfBtn = document.querySelector('[data-tour="export-pdf-btn"]') || document.querySelector('[data-tour="export-pdf"]');
+        const pngBtn = document.querySelector('[data-tour="export-png-btn"]') || document.querySelector('[data-tour="export-png"]');
+        if ((pdfBtn && (pdfBtn === eventTarget || pdfBtn.contains(eventTarget))) ||
+            (pngBtn && (pngBtn === eventTarget || pngBtn.contains(eventTarget)))) {
+          isTargetMatch = true;
+        }
+      } else if (step.id === 81 || step.id === 301) {
+        const pdfBtn = document.querySelector('[data-tour="export-pdf-btn"]') || document.querySelector('[data-tour="export-pdf"]');
+        if (pdfBtn && (pdfBtn === eventTarget || pdfBtn.contains(eventTarget))) {
+          isTargetMatch = true;
+        }
+      } else if (step.id === 82 || step.id === 302) {
+        const pngBtn = document.querySelector('[data-tour="export-png-btn"]') || document.querySelector('[data-tour="export-png"]');
+        if (pngBtn && (pngBtn === eventTarget || pngBtn.contains(eventTarget))) {
           isTargetMatch = true;
         }
       }
@@ -622,6 +711,21 @@ export const InteractiveTourOverlay: React.FC<InteractiveTourOverlayProps> = ({
               goToStep(idx8);
               return;
             }
+          } else if (currStep.id === 8 || currStep.id === 81 || currStep.id === 82) {
+            handleComplete();
+            return;
+          } else if (currStep.id === 301) {
+            const idx302 = INTERACTIVE_GUIDE_STEPS.findIndex((s) => s.id === 302);
+            if (idx302 !== -1) {
+              goToStep(idx302);
+              return;
+            }
+          } else if (currStep.id === 302) {
+            const idx303 = INTERACTIVE_GUIDE_STEPS.findIndex((s) => s.id === 303);
+            if (idx303 !== -1) {
+              goToStep(idx303);
+              return;
+            }
           }
           goToStep(currentStepIndexRef.current + 1);
         }
@@ -676,6 +780,29 @@ export const InteractiveTourOverlay: React.FC<InteractiveTourOverlayProps> = ({
         const createBtn = document.querySelector('[data-tour="create-lineup-submit-btn"]');
         const conflictBtn = document.querySelector('[data-tour="conflict-load-existing-btn"]');
         if ((loadBtn && loadBtn.contains(element)) || (createBtn && createBtn.contains(element)) || (conflictBtn && conflictBtn.contains(element))) {
+          return true;
+        }
+      }
+
+      if (step?.id === 8) {
+        const pdfBtn = document.querySelector('[data-tour="export-pdf-btn"]') || document.querySelector('[data-guide="export-pdf"]');
+        const pngBtn = document.querySelector('[data-tour="export-png-btn"]') || document.querySelector('[data-guide="export-png"]');
+        const exportPair = document.querySelector('[data-tour="export-buttons-pair"]');
+        if ((pdfBtn && pdfBtn.contains(element)) || (pngBtn && pngBtn.contains(element)) || (exportPair && exportPair.contains(element))) {
+          return true;
+        }
+      }
+
+      if (step?.id === 81 || step?.id === 301) {
+        const pdfBtn = document.querySelector('[data-tour="export-pdf-btn"]') || document.querySelector('[data-tour="export-pdf"]');
+        if (pdfBtn && pdfBtn.contains(element)) {
+          return true;
+        }
+      }
+
+      if (step?.id === 82 || step?.id === 302) {
+        const pngBtn = document.querySelector('[data-tour="export-png-btn"]') || document.querySelector('[data-tour="export-png"]');
+        if (pngBtn && pngBtn.contains(element)) {
           return true;
         }
       }
@@ -813,12 +940,12 @@ export const InteractiveTourOverlay: React.FC<InteractiveTourOverlayProps> = ({
       stepId === 390
     )
       return true;
-    if (stepId >= 10 && stepId < 200) return true;
+    if (stepId >= 10 && stepId <= 15) return true;
     return false;
   };
 
   const isLastStepInTopic = (stepId: number) => {
-    if (stepId === 8) return true;
+    if (stepId === 8 || stepId === 81 || stepId === 82) return true;
     if (
       stepId === 207 ||
       stepId === 303 ||
@@ -833,7 +960,7 @@ export const InteractiveTourOverlay: React.FC<InteractiveTourOverlayProps> = ({
       stepId === 392
     )
       return true;
-    if (stepId >= 10 && stepId < 200) return true;
+    if (stepId >= 10 && stepId <= 15) return true;
     return false;
   };
 
@@ -868,7 +995,7 @@ export const InteractiveTourOverlay: React.FC<InteractiveTourOverlayProps> = ({
   };
 
   const getNextButtonLabel = () => {
-    if (step.id === 8) return 'Finish Guide';
+    if (step.id === 8 || step.id === 81 || step.id === 82) return 'Finish Guide';
     if (step.id === 207) return 'Finish Advanced Guide';
     if (isLastStepInTopic(step.id)) return 'Finish Topic';
     return 'Next Step';
@@ -934,6 +1061,21 @@ export const InteractiveTourOverlay: React.FC<InteractiveTourOverlayProps> = ({
       const idx8 = INTERACTIVE_GUIDE_STEPS.findIndex((s) => s.id === 8);
       if (idx8 !== -1) {
         goToStep(idx8);
+        return;
+      }
+    } else if (step.id === 8 || step.id === 81 || step.id === 82) {
+      handleComplete();
+      return;
+    } else if (step.id === 301) {
+      const idx302 = INTERACTIVE_GUIDE_STEPS.findIndex((s) => s.id === 302);
+      if (idx302 !== -1) {
+        goToStep(idx302);
+        return;
+      }
+    } else if (step.id === 302) {
+      const idx303 = INTERACTIVE_GUIDE_STEPS.findIndex((s) => s.id === 303);
+      if (idx303 !== -1) {
+        goToStep(idx303);
         return;
       }
     } else if (isLastStepInTopic(step.id)) {
@@ -1005,10 +1147,22 @@ export const InteractiveTourOverlay: React.FC<InteractiveTourOverlayProps> = ({
         goToStep(idx4);
         return;
       }
+    } else if (step.id === 81 || step.id === 82) {
+      const idx8 = INTERACTIVE_GUIDE_STEPS.findIndex((s) => s.id === 8);
+      if (idx8 !== -1) {
+        goToStep(idx8);
+        return;
+      }
     } else if (step.id === 8) {
       const idx7 = INTERACTIVE_GUIDE_STEPS.findIndex((s) => s.id === 7);
       if (idx7 !== -1) {
         goToStep(idx7);
+        return;
+      }
+    } else if (step.id === 302) {
+      const idx301 = INTERACTIVE_GUIDE_STEPS.findIndex((s) => s.id === 301);
+      if (idx301 !== -1) {
+        goToStep(idx301);
         return;
       }
     }
@@ -1050,11 +1204,14 @@ export const InteractiveTourOverlay: React.FC<InteractiveTourOverlayProps> = ({
   const isLastStep = isLastStepInTopic(step.id);
 
   const getStepBadgeText = () => {
-    if (step.id === 110) return 'Step 1B of 7';
-    if (step.id === 35) return 'Step 3B of 7';
-    if (step.id === 41) return 'Step 4A of 7';
-    if (step.id === 42) return 'Step 4B of 7';
-    if (step.id <= 7) return `Step ${step.id} of 7`;
+    if (step.id === 110) return 'Step 1B of 8';
+    if (step.id === 35) return 'Step 3B of 8';
+    if (step.id === 41) return 'Step 4A of 8';
+    if (step.id === 42) return 'Step 4B of 8';
+    if (step.id === 81) return 'Step 8A • Export PDF';
+    if (step.id === 82) return 'Step 8B • Export PNG';
+    if (step.id === 8) return 'Step 8 of 8';
+    if (step.id <= 8) return `Step ${step.id} of 8`;
     if (step.id >= 200 && step.id <= 207) return `Advanced Guide • Step ${step.id - 199} of 8`;
     if (step.id >= 300 && step.id <= 303) return `Advanced Guide • Step ${step.id - 299} of 4`;
     if (step.id >= 310 && step.id <= 313) return `Advanced Guide • Step ${step.id - 309} of 4`;
@@ -1070,13 +1227,16 @@ export const InteractiveTourOverlay: React.FC<InteractiveTourOverlayProps> = ({
   };
 
   const getProgressPercent = () => {
-    if (step.id === 1) return (1 / 7) * 100;
-    if (step.id === 110) return (1.5 / 7) * 100;
-    if (step.id === 2) return (2 / 7) * 100;
-    if (step.id === 3) return (3 / 7) * 100;
-    if (step.id === 35) return (3.5 / 7) * 100;
-    if (step.id === 41 || step.id === 42) return (4 / 7) * 100;
-    if (step.id <= 7) return (step.id / 7) * 100;
+    if (step.id === 1) return (1 / 8) * 100;
+    if (step.id === 110) return (1.5 / 8) * 100;
+    if (step.id === 2) return (2 / 8) * 100;
+    if (step.id === 3) return (3 / 8) * 100;
+    if (step.id === 35) return (3.5 / 8) * 100;
+    if (step.id === 4 || step.id === 41 || step.id === 42) return (4 / 8) * 100;
+    if (step.id === 5) return (5 / 8) * 100;
+    if (step.id === 6) return (6 / 8) * 100;
+    if (step.id === 7) return (7 / 8) * 100;
+    if (step.id === 8 || step.id === 81 || step.id === 82) return 100;
     if (step.id >= 200 && step.id <= 207) return ((step.id - 199) / 8) * 100;
     if (step.id >= 300 && step.id <= 303) return ((step.id - 299) / 4) * 100;
     if (step.id >= 310 && step.id <= 313) return ((step.id - 309) / 4) * 100;
@@ -1483,10 +1643,10 @@ export const InteractiveTourOverlay: React.FC<InteractiveTourOverlayProps> = ({
                   <span>Line-up Saved Successfully</span>
                 </div>
                 <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">
-                  Your lineup has been saved.
+                  Export Your Line-up
                 </h3>
                 <p className="text-xs text-slate-600 dark:text-slate-300 mt-1">
-                  Would you like to export it?
+                  Choose Export as PDF for a printable document or Export as PNG for a high-resolution image.
                 </p>
               </div>
 
@@ -1494,14 +1654,16 @@ export const InteractiveTourOverlay: React.FC<InteractiveTourOverlayProps> = ({
                 <button
                   type="button"
                   onClick={() => {
-                    const pdfBtn = document.querySelector<HTMLButtonElement>('[data-tour="export-pdf-btn"]');
-                    if (pdfBtn) pdfBtn.click();
+                    const step81Index = INTERACTIVE_GUIDE_STEPS.findIndex((s) => s.id === 81);
+                    if (step81Index !== -1) {
+                      goToStep(step81Index);
+                    }
                   }}
                   className="p-3 bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900/80 border border-indigo-200 dark:border-indigo-800 rounded-xl text-left transition-all cursor-pointer group flex items-center justify-between"
                 >
                   <div className="flex items-center gap-2.5">
                     <div className="w-8 h-8 rounded-lg bg-indigo-600 text-white flex items-center justify-center shrink-0 font-bold text-xs shadow-xs group-hover:scale-105 transition-transform">
-                      <Download className="w-4 h-4" />
+                      <FileDown className="w-4 h-4" />
                     </div>
                     <div>
                       <div className="text-xs font-bold text-indigo-950 dark:text-indigo-100 flex items-center gap-1.5">
@@ -1518,14 +1680,16 @@ export const InteractiveTourOverlay: React.FC<InteractiveTourOverlayProps> = ({
                 <button
                   type="button"
                   onClick={() => {
-                    const pngBtn = document.querySelector<HTMLButtonElement>('[data-tour="export-png-btn"]');
-                    if (pngBtn) pngBtn.click();
+                    const step82Index = INTERACTIVE_GUIDE_STEPS.findIndex((s) => s.id === 82);
+                    if (step82Index !== -1) {
+                      goToStep(step82Index);
+                    }
                   }}
                   className="p-3 bg-slate-50 dark:bg-slate-800/80 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-left transition-all cursor-pointer group flex items-center justify-between"
                 >
                   <div className="flex items-center gap-2.5">
                     <div className="w-8 h-8 rounded-lg bg-emerald-600 text-white flex items-center justify-center shrink-0 font-bold text-xs shadow-xs group-hover:scale-105 transition-transform">
-                      <Download className="w-4 h-4" />
+                      <Image className="w-4 h-4" />
                     </div>
                     <div>
                       <div className="text-xs font-bold text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
@@ -1542,7 +1706,7 @@ export const InteractiveTourOverlay: React.FC<InteractiveTourOverlayProps> = ({
                 <button
                   type="button"
                   onClick={() => {
-                    setIsSaveCompletedState(true);
+                    handleComplete();
                   }}
                   className="w-full py-2.5 px-3 text-xs font-bold text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white bg-slate-100 dark:bg-slate-800/80 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200/80 dark:border-slate-700 rounded-xl transition-colors cursor-pointer text-center mt-0.5"
                 >
@@ -1637,6 +1801,25 @@ export const InteractiveTourOverlay: React.FC<InteractiveTourOverlayProps> = ({
                   >
                     <ChevronLeft className="w-3.5 h-3.5" />
                     <span>Change creation method (Back to Choice)</span>
+                  </button>
+                </div>
+              )}
+
+              {/* Change Export Format link on Step 81 / 82 */}
+              {(step.id === 81 || step.id === 82) && (
+                <div className="pt-1 flex items-center justify-between text-xs">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const step8Index = INTERACTIVE_GUIDE_STEPS.findIndex((s) => s.id === 8);
+                      if (step8Index !== -1) {
+                        goToStep(step8Index);
+                      }
+                    }}
+                    className="text-indigo-600 dark:text-indigo-400 hover:underline font-semibold flex items-center gap-1 cursor-pointer"
+                  >
+                    <ChevronLeft className="w-3.5 h-3.5" />
+                    <span>Change export format (Back to Choice)</span>
                   </button>
                 </div>
               )}
