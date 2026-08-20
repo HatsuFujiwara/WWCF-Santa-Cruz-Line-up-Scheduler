@@ -1,6 +1,7 @@
 import { extractYouTubeId, SongService } from './songService';
 import { Song } from '../types';
 import { getManilaTodayString } from '../utils/dateUtils';
+import { detectSongVersionType } from '../utils/versionDetectionUtils';
 
 export interface PlaylistItem {
   videoId: string;
@@ -548,8 +549,15 @@ export class YouTubePlaylistService {
           const existing = dupMatch.existingSong;
           console.log(`[YouTubePlaylistService] Same-artist duplicate detected for "${item.title}" (Match type: ${dupMatch.matchType}). Updating existing record ID: ${existing.id}`);
 
+          const detectedVer = detectSongVersionType({
+            title: item.title,
+            artist: item.artist,
+            rawTitle: item.title
+          });
+
           const updatedSong = await SongService.saveSong({
             ...existing,
+            versionType: existing.versionType || detectedVer.versionType,
             category: existing.category || assignedCategory,
             artist: existing.artist && existing.artist !== 'Unknown Artist' ? existing.artist : item.artist,
             key: existing.key || '',
@@ -570,6 +578,12 @@ export class YouTubePlaylistService {
         } else {
           // Save new separate song into database
           console.log(`[YouTubePlaylistService] Creating new song record for "${item.title}" by ${item.artist} with category ${assignedCategory}`);
+          const detectedVer = detectSongVersionType({
+            title: item.title,
+            artist: item.artist,
+            rawTitle: item.title
+          });
+
           const newSong = await SongService.saveSong({
             title: item.title,
             artist: item.artist,
@@ -577,6 +591,7 @@ export class YouTubePlaylistService {
             genre: 'Praise & Worship',
             key: '',
             originalKey: '',
+            versionType: detectedVer.versionType,
             duration: item.duration || '3:45',
             youtubeUrl: item.youtubeUrl,
             youtubeId: item.videoId,

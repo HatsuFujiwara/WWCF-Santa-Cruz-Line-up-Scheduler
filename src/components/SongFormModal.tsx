@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Song, SongCategory, SongFamily, SongRelationshipType } from '../types';
+import { Song, SongCategory, SongFamily, SongRelationshipType, SongVersionType } from '../types';
 import { SongService, DuplicateMatch } from '../services/songService';
 import { SongFamilyService } from '../services/songFamilyService';
 import { fetchMultiSourceMetadata } from '../services/musicMetadataService';
 import { getManilaTodayString } from '../utils/dateUtils';
 import { COMMON_THEMES } from '../utils/recommendationUtils';
+import { detectSongVersionType, resolveSongVersionType } from '../utils/versionDetectionUtils';
 import { DuplicateSongModal } from './DuplicateSongModal';
 import {
   X,
@@ -76,6 +77,7 @@ export const SongFormModal: React.FC<SongFormModalProps> = ({
   // Song Family & Composition Metadata
   const [songFamilyId, setSongFamilyId] = useState<string>('');
   const [relationshipType, setRelationshipType] = useState<SongRelationshipType>('ORIGINAL');
+  const [versionType, setVersionType] = useState<SongVersionType>('original');
   const [songwriters, setSongwriters] = useState('');
   const [originalArtist, setOriginalArtist] = useState('');
   const [lyrics, setLyrics] = useState('');
@@ -97,6 +99,7 @@ export const SongFormModal: React.FC<SongFormModalProps> = ({
       setTitle(songToEdit.title || '');
       setArtist(songToEdit.artist || '');
       setCategory(songToEdit.category || 'both');
+      setVersionType(resolveSongVersionType(songToEdit));
       setLanguage(songToEdit.language || 'English');
       setKey(songToEdit.key || '');
       setOriginalKey(songToEdit.originalKey || songToEdit.key || '');
@@ -129,6 +132,7 @@ export const SongFormModal: React.FC<SongFormModalProps> = ({
       setTitle('');
       setArtist('');
       setCategory('both');
+      setVersionType('original');
       setLanguage('English');
       setKey('');
       setOriginalKey('');
@@ -193,6 +197,16 @@ export const SongFormModal: React.FC<SongFormModalProps> = ({
       if (meta.qobuzUrl) setQobuzUrl(meta.qobuzUrl);
       if (meta.tidalUrl) setTidalUrl(meta.tidalUrl);
 
+      // Auto-detect versionType (Original vs Cover)
+      const detectedVer = detectSongVersionType({
+        title: meta.title || title,
+        artist: meta.artist || artist,
+        rawTitle: (meta as any).rawTitle || meta.title,
+        originalArtist: originalArtist,
+        relationshipType
+      });
+      setVersionType(detectedVer.versionType);
+
       showToast('Metadata fetched successfully!', 'success');
     } catch (err: any) {
       setMetaImportError(err.message || 'Unable to retrieve metadata from available music sources. Please enter the information manually.');
@@ -214,6 +228,7 @@ export const SongFormModal: React.FC<SongFormModalProps> = ({
       title: title.trim(),
       artist: artist.trim() || 'Unknown Artist',
       category,
+      versionType,
       language,
       originalKey: originalKey.trim(),
       key: originalKey.trim(),
@@ -336,8 +351,8 @@ export const SongFormModal: React.FC<SongFormModalProps> = ({
 
   return (
     <>
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200">
-        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl max-w-2xl w-full overflow-hidden p-6 space-y-5 animate-in zoom-in-95 duration-200 max-h-[90vh] flex flex-col">
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs overflow-y-auto animate-in fade-in duration-200">
+        <div className="relative w-full max-w-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl overflow-hidden p-6 space-y-5 animate-in zoom-in-95 duration-200 max-h-[90vh] my-auto flex flex-col">
           
           {/* Header */}
           <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800 shrink-0">
@@ -364,7 +379,7 @@ export const SongFormModal: React.FC<SongFormModalProps> = ({
           </div>
 
           {/* Form Body */}
-          <form id="song-form" onSubmit={handleSubmit} className="overflow-y-auto space-y-4 pr-1 flex-1">
+          <form id="song-form" onSubmit={handleSubmit} className="overflow-y-auto space-y-4 pr-1 flex-1 min-h-0">
             
             {/* Multi-Source Metadata Auto-Fetch Box */}
             <div className="p-4 rounded-xl bg-indigo-50/50 dark:bg-slate-800/80 border border-indigo-100 dark:border-slate-700 space-y-2.5">
@@ -554,6 +569,50 @@ export const SongFormModal: React.FC<SongFormModalProps> = ({
                 placeholder="Paste song lyrics or chorus here..."
                 className="w-full px-3 py-2 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none"
               />
+            </div>
+
+            {/* Song Status: ORIGINAL / COVER */}
+            <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 space-y-2">
+              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center justify-between">
+                <span className="flex items-center gap-1.5">
+                  <Music className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                  <span>Song Status: Original / Cover <span className="text-red-500">*</span></span>
+                </span>
+                <span className="text-[10px] font-medium text-slate-400">Classifies the recording version</span>
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setVersionType('original');
+                    if (relationshipType === 'COVER') setRelationshipType('ORIGINAL');
+                  }}
+                  className={`py-2 px-3 rounded-lg border text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                    versionType === 'original'
+                      ? 'bg-emerald-50 dark:bg-emerald-950/80 border-emerald-500 text-emerald-700 dark:text-emerald-300 shadow-xs ring-1 ring-emerald-500'
+                      : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50'
+                  }`}
+                >
+                  <span className={`w-2 h-2 rounded-full ${versionType === 'original' ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-slate-600'}`} />
+                  <span>ORIGINAL</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setVersionType('cover');
+                    if (relationshipType === 'ORIGINAL') setRelationshipType('COVER');
+                  }}
+                  className={`py-2 px-3 rounded-lg border text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                    versionType === 'cover'
+                      ? 'bg-purple-50 dark:bg-purple-950/80 border-purple-500 text-purple-700 dark:text-purple-300 shadow-xs ring-1 ring-purple-500'
+                      : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50'
+                  }`}
+                >
+                  <span className={`w-2 h-2 rounded-full ${versionType === 'cover' ? 'bg-purple-500' : 'bg-slate-300 dark:bg-slate-600'}`} />
+                  <span>COVER</span>
+                </button>
+              </div>
             </div>
 
             {/* Category, Language & Original Key */}

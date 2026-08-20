@@ -20,13 +20,14 @@ import {
   Clipboard,
   Link as LinkIcon
 } from 'lucide-react';
-import { Song, SongCategory, SongConflictResult, SongRelationshipType, SongFamily } from '../types';
+import { Song, SongCategory, SongConflictResult, SongRelationshipType, SongFamily, SongVersionType } from '../types';
 import { extractYouTubeId, SongService } from '../services/songService';
 import { SongFamilyService } from '../services/songFamilyService';
 import { fetchMultiSourceMetadata } from '../services/musicMetadataService';
 import { sanitizeSongLanguage, SongLanguage } from '../utils/languageUtils';
 import { getManilaTodayString } from '../utils/dateUtils';
 import { areArtistsEquivalent } from '../utils/songFamilyUtils';
+import { detectSongVersionType } from '../utils/versionDetectionUtils';
 
 export interface SingleSongImportModalProps {
   isOpen: boolean;
@@ -66,6 +67,7 @@ export const SingleSongImportModal: React.FC<SingleSongImportModalProps> = ({
   const [performedKey, setPerformedKey] = useState('');
   const [language, setLanguage] = useState<SongLanguage>('English');
   const [category, setCategory] = useState<SongCategory>(initialCategory);
+  const [versionType, setVersionType] = useState<SongVersionType>('original');
   const [youtubeUrl, setYoutubeUrl] = useState('');
   const [youtubeId, setYoutubeId] = useState('');
   const [thumbnailUrl, setThumbnailUrl] = useState('');
@@ -97,6 +99,7 @@ export const SingleSongImportModal: React.FC<SingleSongImportModalProps> = ({
       setPerformedKey('');
       setLanguage('English');
       setCategory(initialCategory || 'praise');
+      setVersionType('original');
       setYoutubeUrl('');
       setYoutubeId('');
       setThumbnailUrl('');
@@ -162,6 +165,14 @@ export const SingleSongImportModal: React.FC<SingleSongImportModalProps> = ({
       const parsedLang = sanitizeSongLanguage(meta.language || 'English');
       const parsedKey = meta.key || meta.originalKey || '';
 
+      // Auto-detect Original vs Cover status
+      const detectedVer = detectSongVersionType({
+        title: parsedTitle,
+        artist: parsedArtist,
+        relationshipType: meta.relationshipType
+      });
+      setVersionType(detectedVer.versionType);
+
       setTitle(parsedTitle);
       setArtist(parsedArtist);
       setAlbum(meta.album || '');
@@ -200,6 +211,11 @@ export const SingleSongImportModal: React.FC<SingleSongImportModalProps> = ({
         }
         if (conflict.suggestedRelationship) {
           setSelectedRelationship(conflict.suggestedRelationship);
+          if (conflict.suggestedRelationship === 'COVER') {
+            setVersionType('cover');
+          } else if (conflict.suggestedRelationship === 'ORIGINAL') {
+            setVersionType('original');
+          }
         }
         setStep('CONFLICT_RESOLUTION');
       } else {
@@ -213,6 +229,7 @@ export const SingleSongImportModal: React.FC<SingleSongImportModalProps> = ({
       const cleanYtId = extractYouTubeId(raw) || '';
       setTitle('');
       setArtist('');
+      setVersionType('original');
       setYoutubeUrl(raw);
       setYoutubeId(cleanYtId);
       if (cleanYtId) {
@@ -234,6 +251,11 @@ export const SingleSongImportModal: React.FC<SingleSongImportModalProps> = ({
 
     setIsLoading(true);
     try {
+      // If linking to family as COVER, ensure versionType is cover; if ORIGINAL, ensure original
+      const finalVersionType: SongVersionType = linkToExistingFamily
+        ? (selectedRelationship === 'COVER' ? 'cover' : selectedRelationship === 'ORIGINAL' ? 'original' : versionType)
+        : versionType;
+
       // 1. Save song to database
       const songDataToSave: Partial<Song> & { title: string } = {
         title: title.trim(),
@@ -243,6 +265,7 @@ export const SingleSongImportModal: React.FC<SingleSongImportModalProps> = ({
         genre: 'Praise & Worship',
         key: key.trim(),
         originalKey: key.trim(),
+        versionType: finalVersionType,
         duration: duration.trim() || '3:45',
         category: category,
         language: sanitizeSongLanguage(language),
@@ -310,8 +333,8 @@ export const SingleSongImportModal: React.FC<SingleSongImportModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fadeIn">
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl max-w-2xl w-full overflow-hidden flex flex-col max-h-[90vh]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm overflow-y-auto animate-fadeIn">
+      <div className="relative w-full max-w-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] my-auto">
         
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30 shrink-0">
@@ -688,6 +711,21 @@ export const SingleSongImportModal: React.FC<SingleSongImportModalProps> = ({
                 {/* Metadata Pills */}
                 <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-200/80 dark:border-slate-700/80">
                   <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 font-bold">
+                    <span>Status:</span>
+                    {versionType === 'cover' ? (
+                      <span className="text-purple-600 dark:text-purple-400 uppercase flex items-center gap-1">
+                        <span className="w-1.5 h-1.5 rounded-full bg-purple-500" />
+                        <span>COVER</span>
+                      </span>
+                    ) : (
+                      <span className="text-emerald-600 dark:text-emerald-400 uppercase flex items-center gap-1">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                        <span>ORIGINAL</span>
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 font-bold">
                     <span>Language:</span>
                     <span className="text-indigo-600 dark:text-indigo-400">{language}</span>
                   </div>
@@ -746,6 +784,38 @@ export const SingleSongImportModal: React.FC<SingleSongImportModalProps> = ({
                         onChange={(e) => setArtist(e.target.value)}
                         className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-medium"
                       />
+                    </div>
+
+                    <div className="sm:col-span-2">
+                      <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                        Song Status (Original / Cover) <span className="text-red-500">*</span>
+                      </label>
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setVersionType('original')}
+                          className={`py-2 px-3 rounded-lg text-xs font-bold transition-all border flex items-center justify-center gap-1.5 cursor-pointer ${
+                            versionType === 'original'
+                              ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                              : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-750'
+                          }`}
+                        >
+                          <Check className="w-3.5 h-3.5" />
+                          <span>ORIGINAL</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setVersionType('cover')}
+                          className={`py-2 px-3 rounded-lg text-xs font-bold transition-all border flex items-center justify-center gap-1.5 cursor-pointer ${
+                            versionType === 'cover'
+                              ? 'bg-purple-600 text-white border-purple-600 shadow-xs'
+                              : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-750'
+                          }`}
+                        >
+                          <Music className="w-3.5 h-3.5" />
+                          <span>COVER</span>
+                        </button>
+                      </div>
                     </div>
 
                     <div>

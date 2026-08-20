@@ -4,6 +4,7 @@ import { SongService } from '../services/songService';
 import { SongFamilyService } from '../services/songFamilyService';
 import { detectPotentialSongFamilies, PotentialFamilySuggestion } from '../utils/songFamilyUtils';
 import { sanitizeSongLanguage } from '../utils/languageUtils';
+import { resolveSongVersionType } from '../utils/versionDetectionUtils';
 import { getManilaTodayString } from '../utils/dateUtils';
 import { useMultiSelect } from '../hooks/useMultiSelect';
 import { SongFormModal } from './SongFormModal';
@@ -70,6 +71,7 @@ export const SongsView: React.FC<SongsViewProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [languageFilter, setLanguageFilter] = useState<string>('all');
+  const [versionTypeFilter, setVersionTypeFilter] = useState<'all' | 'original' | 'cover'>('all');
   const [sortBy, setSortBy] = useState<SongSortOption>('name-asc');
   const [expandedHistoryId, setExpandedHistoryId] = useState<string | null>(null);
 
@@ -150,6 +152,12 @@ export const SongsView: React.FC<SongsViewProps> = ({
     // Language
     if (languageFilter !== 'all' && s.language !== languageFilter) {
       return false;
+    }
+
+    // Version Type (Original vs Cover)
+    if (versionTypeFilter !== 'all') {
+      const ver = resolveSongVersionType(s);
+      if (ver !== versionTypeFilter) return false;
     }
 
     // Search query with robust multi-term matching
@@ -391,6 +399,29 @@ export const SongsView: React.FC<SongsViewProps> = ({
     }
   };
 
+  const handleBulkVersionTypeChange = async (targetVersionType: 'original' | 'cover') => {
+    const selectedSongs = songs.filter((s) => selectedIds.has(s.id));
+    if (selectedSongs.length === 0) return;
+
+    try {
+      const targetIds = selectedSongs.map((s) => s.id);
+      await SongService.bulkUpdateVersionType(targetIds, targetVersionType);
+
+      showToast(
+        selectedSongs.length === 1
+          ? `Set "${selectedSongs[0].title}" to ${targetVersionType.toUpperCase()}.`
+          : `Set ${selectedSongs.length} selected songs to ${targetVersionType.toUpperCase()}.`,
+        'success'
+      );
+
+      clearSelection();
+      onRefreshSongs();
+    } catch (err) {
+      console.error('Failed to update song version types:', err);
+      showToast('Failed to update song status', 'danger');
+    }
+  };
+
   const currentYM = getManilaTodayString().substring(0, 7);
 
   // Stats
@@ -580,6 +611,17 @@ export const SongsView: React.FC<SongsViewProps> = ({
             <option value="Multi-lingual">Multi-lingual</option>
           </select>
 
+          {/* Status Filter (Original / Cover) */}
+          <select
+            value={versionTypeFilter}
+            onChange={(e) => setVersionTypeFilter(e.target.value as 'all' | 'original' | 'cover')}
+            className="px-3 py-2 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-slate-100 outline-none w-full sm:w-auto min-h-[38px] cursor-pointer"
+          >
+            <option value="all">All Statuses</option>
+            <option value="original">Original Only</option>
+            <option value="cover">Cover Only</option>
+          </select>
+
           {/* Sort By Dropdown */}
           <div className="flex items-center gap-1.5 w-full sm:w-auto">
             <span className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider whitespace-nowrap pl-1 hidden xl:inline">
@@ -708,6 +750,24 @@ export const SongsView: React.FC<SongsViewProps> = ({
             >
               <Languages className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
               <span>Set Selected to Multi-lingual</span>
+            </button>
+
+            <button
+              onClick={() => handleBulkVersionTypeChange('original')}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/80 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 border border-emerald-200 dark:border-emerald-800 rounded-lg transition-colors cursor-pointer shadow-xs"
+              title="Set selected song(s) status to ORIGINAL"
+            >
+              <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+              <span>Set Selected to Original</span>
+            </button>
+
+            <button
+              onClick={() => handleBulkVersionTypeChange('cover')}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-purple-700 dark:text-purple-300 bg-purple-50 dark:bg-purple-950/80 hover:bg-purple-100 dark:hover:bg-purple-900/60 border border-purple-200 dark:border-purple-800 rounded-lg transition-colors cursor-pointer shadow-xs"
+              title="Set selected song(s) status to COVER"
+            >
+              <Music className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+              <span>Set Selected to Cover</span>
             </button>
 
             <button
@@ -871,6 +931,19 @@ export const SongsView: React.FC<SongsViewProps> = ({
 
                       {/* Metadata Pill Tags */}
                       <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                        {/* Original vs Cover Status Badge */}
+                        {resolveSongVersionType(song) === 'cover' ? (
+                          <span className="px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-purple-50 dark:bg-purple-950/80 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800 flex items-center gap-1">
+                            <span className="w-1.5 h-1.5 rounded-full bg-purple-500" />
+                            <span>COVER</span>
+                          </span>
+                        ) : (
+                          <span className="px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-emerald-50 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 flex items-center gap-1">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                            <span>ORIGINAL</span>
+                          </span>
+                        )}
+
                         <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300">
                           Category: {song.category.toUpperCase()}
                         </span>

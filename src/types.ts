@@ -140,6 +140,8 @@ export type ActiveTab = 'dashboard' | 'scheduler' | 'schedules' | 'members' | 's
 
 export type SongCategory = 'praise' | 'worship' | 'both';
 
+export type SongVersionType = 'original' | 'cover';
+
 export type SongRelationshipType =
   | 'ORIGINAL'
   | 'COVER'
@@ -204,6 +206,7 @@ export interface Song {
   serviceHistory: ServiceUsageHistory[];
   notes?: string;
   category: SongCategory;
+  versionType?: SongVersionType;
   labels?: string[];
   themes?: string[];
   // Song Relationship / Song Family fields

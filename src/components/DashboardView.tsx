@@ -85,7 +85,19 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     return calculateSongAnalytics(schedules, members);
   }, [schedules, members]);
 
-  const topSongs = songAnalytics.mostUsedSongs.slice(0, 6);
+  // Most Used Songs: Filter to songs played at least twice (playCount >= 2) before taking top results
+  const topSongs = useMemo(() => {
+    return songAnalytics.mostUsedSongs
+      .filter((song) => song.totalCount >= 2)
+      .sort((a, b) => {
+        if (b.totalCount !== a.totalCount) {
+          return b.totalCount - a.totalCount;
+        }
+        return a.title.localeCompare(b.title, undefined, { sensitivity: 'base' });
+      })
+      .slice(0, 6);
+  }, [songAnalytics]);
+
   const totalUniqueSongs = songAnalytics.totalUniqueSongs;
 
   // Recent Saved Lineups (only lineups with songs)
@@ -604,7 +616,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           <div className="p-5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs">
             {topSongs.length === 0 ? (
               <p className="text-xs text-slate-400 text-center py-6">
-                No songs recorded yet.
+                No songs have been played more than once yet.
               </p>
             ) : (
               <div className="divide-y divide-slate-100 dark:divide-slate-800">

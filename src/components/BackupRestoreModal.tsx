@@ -2,6 +2,7 @@ import React, { useState, useRef } from 'react';
 import { Member, Schedule, Song } from '../types';
 import { StorageService } from '../services/storage';
 import { SongService } from '../services/songService';
+import { SongFamilyService } from '../services/songFamilyService';
 import { X, Download, Upload, ShieldCheck, Database, AlertCircle } from 'lucide-react';
 
 interface BackupRestoreModalProps {
@@ -31,13 +32,15 @@ export const BackupRestoreModal: React.FC<BackupRestoreModalProps> = ({
     songs?: Song[];
     schedules?: Schedule[];
     labels?: string[];
+    songFamilies?: any[];
   } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   if (!isOpen) return null;
 
-  const handleDownloadBackup = () => {
+  const handleDownloadBackup = async () => {
     try {
+      const songFamilies = await SongFamilyService.getSongFamilies();
       const backupObj = {
         app: 'WWCF Santa Cruz Worship Ministry',
         version: '1.0',
@@ -46,7 +49,8 @@ export const BackupRestoreModal: React.FC<BackupRestoreModalProps> = ({
           members,
           songs,
           schedules,
-          labels
+          labels,
+          songFamilies
         }
       };
 
@@ -116,6 +120,9 @@ export const BackupRestoreModal: React.FC<BackupRestoreModalProps> = ({
       if (Array.isArray(pendingRestoreData.songs)) {
         await SongService.saveSongsList(pendingRestoreData.songs);
       }
+      if (Array.isArray(pendingRestoreData.songFamilies)) {
+        await SongFamilyService.saveSongFamilies(pendingRestoreData.songFamilies);
+      }
 
       showToast('Data restored successfully!', 'success');
       setIsConfirmingRestore(false);
@@ -129,13 +136,13 @@ export const BackupRestoreModal: React.FC<BackupRestoreModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-[999] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-[999] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs overflow-y-auto animate-in fade-in duration-200">
       <div
         data-tour="backup-modal-container"
-        className="w-full max-w-md bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800 overflow-hidden transform animate-in zoom-in-95 duration-200"
+        className="w-full max-w-md bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800 overflow-hidden max-h-[90vh] my-auto flex flex-col transform animate-in zoom-in-95 duration-200"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 dark:border-slate-800">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 dark:border-slate-800 shrink-0">
           <div className="flex items-center gap-2.5">
             <div className="p-2 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400">
               <Database className="w-5 h-5 shrink-0" />

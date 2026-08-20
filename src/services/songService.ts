@@ -1,4 +1,4 @@
-import { Song, Schedule, SongCategory, SongFamily, SongConflictResult, SongConflictType, SongRelationshipType } from '../types';
+import { Song, Schedule, SongCategory, SongFamily, SongConflictResult, SongConflictType, SongRelationshipType, SongVersionType } from '../types';
 import { DEFAULT_SONGS } from '../data/songSeedData';
 import { getManilaTodayString, getManilaNowISO } from '../utils/dateUtils';
 import { isFirstRegularServiceOfMonth, getLastRegularSchedulesOfPreviousMonth } from '../utils/scheduleUtils';
@@ -182,6 +182,7 @@ export class SongService {
         serviceHistory: songData.serviceHistory || existing?.serviceHistory || [],
         notes: songData.notes || '',
         category: songData.category || 'both',
+        versionType: songData.versionType !== undefined ? songData.versionType : (existing?.versionType || (songData.relationshipType === 'COVER' ? 'cover' : 'original')),
         labels: songData.labels || [],
         themes: songData.themes || []
       };
@@ -231,6 +232,7 @@ export class SongService {
         serviceHistory: [],
         notes: songData.notes || '',
         category: songData.category || 'both',
+        versionType: songData.versionType || (songData.relationshipType === 'COVER' ? 'cover' : 'original'),
         labels: songData.labels || [],
         themes: songData.themes || []
       };
@@ -311,6 +313,32 @@ export class SongService {
     for (const song of songs) {
       if (idSet.has(song.id)) {
         song.category = category;
+        modified = true;
+      }
+    }
+
+    if (modified) {
+      localStorage.setItem(SONGS_STORAGE_KEY, JSON.stringify(songs));
+    }
+  }
+
+  /**
+   * Bulk updates version type ('original' vs 'cover') for multiple songs by ID array
+   */
+  static async bulkUpdateVersionType(ids: string[], versionType: SongVersionType): Promise<void> {
+    if (!ids || ids.length === 0) return;
+    const songs = await this.getSongs();
+    const idSet = new Set(ids.map((id) => id.trim()));
+    let modified = false;
+
+    for (const song of songs) {
+      if (idSet.has(song.id)) {
+        song.versionType = versionType;
+        if (versionType === 'original' && song.relationshipType === 'COVER') {
+          song.relationshipType = 'ORIGINAL';
+        } else if (versionType === 'cover' && (!song.relationshipType || song.relationshipType === 'ORIGINAL')) {
+          song.relationshipType = 'COVER';
+        }
         modified = true;
       }
     }

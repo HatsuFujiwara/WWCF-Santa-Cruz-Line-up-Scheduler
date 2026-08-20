@@ -4,6 +4,7 @@ import { Html5Qrcode } from 'html5-qrcode';
 import { Member, Schedule, Song } from '../types';
 import { StorageService, DraftSchedule } from '../services/storage';
 import { SongService } from '../services/songService';
+import { SongFamilyService } from '../services/songFamilyService';
 import {
   X,
   QrCode,
@@ -234,6 +235,7 @@ export const TransferDataModal: React.FC<TransferDataModalProps> = ({
     setPcErrorMessage('');
 
     try {
+      const songFamilies = await SongFamilyService.getSongFamilies();
       const payloadObj = {
         app: 'WWCF Santa Cruz Worship Ministry',
         version: '1.0',
@@ -243,6 +245,7 @@ export const TransferDataModal: React.FC<TransferDataModalProps> = ({
           songs,
           schedules,
           labels,
+          songFamilies,
           draft: includeDraft ? draftSchedule : undefined
         }
       };
@@ -393,6 +396,9 @@ export const TransferDataModal: React.FC<TransferDataModalProps> = ({
         if (Array.isArray(incoming.songs)) {
           await SongService.saveSongsList(incoming.songs);
         }
+        if (Array.isArray(incoming.songFamilies)) {
+          await SongFamilyService.saveSongFamilies(incoming.songFamilies);
+        }
         if (incoming.draft) {
           StorageService.saveDraftSchedule(incoming.draft);
         }
@@ -440,6 +446,18 @@ export const TransferDataModal: React.FC<TransferDataModalProps> = ({
           await SongService.saveSongsList(Array.from(songMap.values()));
         }
 
+        if (Array.isArray(incoming.songFamilies)) {
+          const currentFamilies = await SongFamilyService.getSongFamilies();
+          const familyMap = new Map<string, any>();
+          currentFamilies.forEach((f) => familyMap.set(f.id, f));
+          incoming.songFamilies.forEach((f: any) => {
+            if (!familyMap.has(f.id)) {
+              familyMap.set(f.id, f);
+            }
+          });
+          await SongFamilyService.saveSongFamilies(Array.from(familyMap.values()));
+        }
+
         if (incoming.draft) {
           StorageService.saveDraftSchedule(incoming.draft);
         }
@@ -485,10 +503,10 @@ export const TransferDataModal: React.FC<TransferDataModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-[999] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-xs animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-[999] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-xs overflow-y-auto animate-in fade-in duration-200">
       <div
         data-tour="transfer-modal-container"
-        className="w-full max-w-lg bg-black text-slate-100 rounded-2xl shadow-2xl border border-slate-800 overflow-hidden flex flex-col max-h-[90vh] transform animate-in zoom-in-95 duration-200"
+        className="w-full max-w-lg bg-black text-slate-100 rounded-2xl shadow-2xl border border-slate-800 overflow-hidden flex flex-col max-h-[90vh] my-auto transform animate-in zoom-in-95 duration-200"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
