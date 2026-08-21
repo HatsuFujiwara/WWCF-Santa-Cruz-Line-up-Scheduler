@@ -410,68 +410,69 @@ export const SchedulesView: React.FC<SchedulesViewProps> = ({
             </div>
           </div>
         </div>
+      </div>
 
-        {/* 🌟 Universal Action Buttons Toolbar (Matching Member Editor Pattern) */}
-        <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-slate-100 dark:border-slate-800">
+      {/* 🌟 Universal Action Buttons Toolbar */}
+      <div
+        data-tour="schedules-bulk-actions"
+        className="sticky top-[73px] sm:top-[77px] z-20 flex flex-wrap items-center justify-between gap-3 p-3 rounded-xl bg-slate-50/95 dark:bg-slate-900/95 backdrop-blur-md border border-slate-200/90 dark:border-slate-700 shadow-sm transition-all"
+      >
+        <div className="flex items-center gap-3">
+          <label className="inline-flex items-center gap-2 text-xs font-bold text-slate-700 dark:text-slate-300 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={isAllSelected}
+              ref={(el) => {
+                if (el) el.indeterminate = isSomeSelected;
+              }}
+              onChange={() => toggleSelectAll(filteredSchedules)}
+              className="w-4 h-4 rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+            />
+            <span>Select All ({filteredSchedules.length})</span>
+          </label>
+
+          {selectedCount > 0 && (
+            <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
+              {selectedCount} selected
+            </span>
+          )}
+        </div>
+
+        {selectedCount > 0 && (
           <div className="flex flex-wrap items-center gap-2">
-            {/* Edit Line-up Button */}
-            <button
-              type="button"
-              disabled={selectedCount !== 1}
-              onClick={handleEditSelected}
-              className={`inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-lg border transition-all cursor-pointer select-none ${
-                selectedCount === 1
-                  ? 'bg-indigo-600 hover:bg-indigo-700 text-white border-indigo-600 shadow-xs'
-                  : 'bg-slate-100 dark:bg-slate-800/60 text-slate-400 dark:text-slate-600 border-slate-200 dark:border-slate-800/80 cursor-not-allowed opacity-60'
-              }`}
-              title={
-                selectedCount === 0
-                  ? 'Select 1 line-up to edit'
-                  : selectedCount > 1
-                  ? 'Select only 1 line-up to edit'
-                  : 'Edit selected line-up'
-              }
-            >
-              <Edit3 className="w-3.5 h-3.5" />
-              <span>Edit Line-up</span>
-            </button>
+            {selectedCount === 1 && (
+              <>
+                {/* Edit Line-up Button */}
+                <button
+                  type="button"
+                  onClick={handleEditSelected}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-lg border bg-indigo-600 hover:bg-indigo-700 text-white border-indigo-600 shadow-xs transition-all cursor-pointer select-none"
+                  title="Edit selected line-up"
+                >
+                  <Edit3 className="w-3.5 h-3.5" />
+                  <span>Edit Line-up</span>
+                </button>
 
-            {/* Duplicate Line-up Button */}
-            <button
-              type="button"
-              disabled={selectedCount !== 1}
-              onClick={handleDuplicateSelected}
-              className={`inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-lg border transition-all cursor-pointer select-none ${
-                selectedCount === 1
-                  ? 'bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-600 shadow-xs'
-                  : 'bg-slate-100 dark:bg-slate-800/60 text-slate-400 dark:text-slate-600 border-slate-200 dark:border-slate-800/80 cursor-not-allowed opacity-60'
-              }`}
-              title={
-                selectedCount === 0
-                  ? 'Select 1 line-up to duplicate'
-                  : selectedCount > 1
-                  ? 'Select only 1 line-up to duplicate'
-                  : 'Duplicate selected line-up'
-              }
-            >
-              <Copy className="w-3.5 h-3.5" />
-              <span>Duplicate Line-up</span>
-            </button>
+                {/* Duplicate Line-up Button */}
+                <button
+                  type="button"
+                  onClick={handleDuplicateSelected}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-lg border bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-600 shadow-xs transition-all cursor-pointer select-none"
+                  title="Duplicate selected line-up"
+                >
+                  <Copy className="w-3.5 h-3.5" />
+                  <span>Duplicate Line-up</span>
+                </button>
+              </>
+            )}
 
             {/* Export PDF Button */}
             <button
               type="button"
-              disabled={selectedCount === 0}
               onClick={handleExportPDFSelected}
-              className={`inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-lg border transition-all cursor-pointer select-none ${
-                selectedCount >= 1
-                  ? 'bg-indigo-50 dark:bg-indigo-950/80 text-indigo-700 dark:text-indigo-300 border-indigo-300 dark:border-indigo-800 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 shadow-xs'
-                  : 'bg-slate-100 dark:bg-slate-800/60 text-slate-400 dark:text-slate-600 border-slate-200 dark:border-slate-800/80 cursor-not-allowed opacity-60'
-              }`}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-lg border bg-indigo-50 dark:bg-indigo-950/80 text-indigo-700 dark:text-indigo-300 border-indigo-300 dark:border-indigo-800 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 shadow-xs transition-all cursor-pointer select-none"
               title={
-                selectedCount === 0
-                  ? 'Select line-up(s) to export PDF'
-                  : selectedCount === 1
+                selectedCount === 1
                   ? 'Export selected line-up as PDF'
                   : `Export ${selectedCount} selected line-ups as PDF`
               }
@@ -483,17 +484,10 @@ export const SchedulesView: React.FC<SchedulesViewProps> = ({
             {/* Export PNG Button */}
             <button
               type="button"
-              disabled={selectedCount === 0}
               onClick={handleExportPNGSelected}
-              className={`inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-lg border transition-all cursor-pointer select-none ${
-                selectedCount >= 1
-                  ? 'bg-indigo-50 dark:bg-indigo-950/80 text-indigo-700 dark:text-indigo-300 border-indigo-300 dark:border-indigo-800 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 shadow-xs'
-                  : 'bg-slate-100 dark:bg-slate-800/60 text-slate-400 dark:text-slate-600 border-slate-200 dark:border-slate-800/80 cursor-not-allowed opacity-60'
-              }`}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-lg border bg-indigo-50 dark:bg-indigo-950/80 text-indigo-700 dark:text-indigo-300 border-indigo-300 dark:border-indigo-800 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 shadow-xs transition-all cursor-pointer select-none"
               title={
-                selectedCount === 0
-                  ? 'Select line-up(s) to export PNG'
-                  : selectedCount === 1
+                selectedCount === 1
                   ? 'Export selected line-up as PNG image'
                   : `Export ${selectedCount} selected line-ups as PNG`
               }
@@ -505,17 +499,10 @@ export const SchedulesView: React.FC<SchedulesViewProps> = ({
             {/* Delete Line-up Button */}
             <button
               type="button"
-              disabled={selectedCount === 0}
               onClick={handleDeleteSelected}
-              className={`inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-lg border transition-all cursor-pointer select-none ${
-                selectedCount >= 1
-                  ? 'bg-rose-600 hover:bg-rose-700 text-white border-rose-600 shadow-xs'
-                  : 'bg-slate-100 dark:bg-slate-800/60 text-slate-400 dark:text-slate-600 border-slate-200 dark:border-slate-800/80 cursor-not-allowed opacity-60'
-              }`}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-lg border bg-rose-600 hover:bg-rose-700 text-white border-rose-600 shadow-xs transition-all cursor-pointer select-none"
               title={
-                selectedCount === 0
-                  ? 'Select line-up(s) to delete'
-                  : selectedCount === 1
+                selectedCount === 1
                   ? 'Delete selected line-up'
                   : `Delete ${selectedCount} selected line-ups`
               }
@@ -523,24 +510,17 @@ export const SchedulesView: React.FC<SchedulesViewProps> = ({
               <Trash2 className="w-3.5 h-3.5" />
               <span>Delete Line-up{selectedCount > 1 ? `s (${selectedCount})` : ''}</span>
             </button>
-          </div>
 
-          {/* Selection Counter & Clear Action */}
-          {selectedCount > 0 && (
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-bold text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/80 px-2.5 py-1 rounded-full border border-indigo-200/80 dark:border-indigo-800/80">
-                {selectedCount} selected
-              </span>
-              <button
-                type="button"
-                onClick={clearSelection}
-                className="text-[11px] font-semibold text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 underline cursor-pointer"
-              >
-                Clear
-              </button>
-            </div>
-          )}
-        </div>
+            {/* Clear Selection */}
+            <button
+              type="button"
+              onClick={clearSelection}
+              className="text-[11px] font-semibold text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 underline cursor-pointer ml-1"
+            >
+              Clear
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Schedules List / Table */}
@@ -573,18 +553,7 @@ export const SchedulesView: React.FC<SchedulesViewProps> = ({
             <table className="w-full text-left text-xs border-collapse">
               <thead>
                 <tr className="border-b border-slate-100 dark:border-slate-800 text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider bg-slate-50/50 dark:bg-slate-800/30">
-                  <th className="py-3 px-3 w-10 text-center">
-                    <input
-                      type="checkbox"
-                      checked={isAllSelected}
-                      ref={(el) => {
-                        if (el) el.indeterminate = isSomeSelected;
-                      }}
-                      onChange={() => toggleSelectAll(filteredSchedules)}
-                      className="w-4 h-4 rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
-                      title="Select / Unselect All Visible"
-                    />
-                  </th>
+                  <th className="py-3 px-3 w-10 text-center" aria-label="Row selection"></th>
                   <th className="py-3 px-4">Date</th>
                   <th className="py-3 px-4">Service</th>
                   <th className="py-3 px-4 min-w-[240px]">Songs</th>
@@ -658,8 +627,8 @@ export const SchedulesView: React.FC<SchedulesViewProps> = ({
                                 <AlertTriangle className="w-3 h-3 text-amber-600 dark:text-amber-400 shrink-0" />
                                 <span>
                                   {repeatedSongs.length === 1
-                                    ? '⚠ 1 Repeated Song'
-                                    : `⚠ ${repeatedSongs.length} Repeated Songs`}
+                                    ? '1 Repeated Song'
+                                    : `${repeatedSongs.length} Repeated Songs`}
                                 </span>
                               </button>
 

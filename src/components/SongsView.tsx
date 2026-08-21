@@ -649,7 +649,10 @@ export const SongsView: React.FC<SongsViewProps> = ({
       </div>
 
       {/* Bulk Actions & Selection Bar */}
-      <div data-tour="song-bulk-actions" className="flex flex-wrap items-center justify-between gap-3 p-3 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700">
+      <div
+        data-tour="song-bulk-actions"
+        className="sticky top-[73px] sm:top-[77px] z-20 flex flex-wrap items-center justify-between gap-3 p-3 rounded-xl bg-slate-50/95 dark:bg-slate-900/95 backdrop-blur-md border border-slate-200/90 dark:border-slate-700 shadow-sm transition-all"
+      >
         <div className="flex items-center gap-3">
           <label className="inline-flex items-center gap-2 text-xs font-bold text-slate-700 dark:text-slate-300 cursor-pointer select-none">
             <input

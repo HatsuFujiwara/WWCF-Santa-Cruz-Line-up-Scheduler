@@ -6,18 +6,21 @@ import { createServer as createViteServer } from "vite";
 interface TransferSession {
   sessionId: string;
   token: string;
+  direction: 'pc_to_phone' | 'phone_to_pc';
   createdAt: number;
   expiresAt: number;
-  status: 'waiting' | 'connected' | 'transferring' | 'completed' | 'expired' | 'cancelled';
+  status: 'waiting' | 'connected' | 'data_ready' | 'transferring' | 'completed' | 'expired' | 'cancelled';
   payload?: {
     app: string;
     version: string;
     exportedAt: string;
+    direction?: string;
     data: {
       members?: any[];
       songs?: any[];
       schedules?: any[];
       labels?: string[];
+      songFamilies?: any[];
       draft?: any;
     };
   };
@@ -46,11 +49,14 @@ async function startServer() {
     res.json({ status: "ok" });
   });
 
-  // Create temporary transfer session
+  // Create temporary transfer session (Supports PC -> Phone and Phone -> PC)
   app.post("/api/transfer/create", (req, res) => {
     try {
-      const { payload, expiresInSeconds = 600 } = req.body;
-      if (!payload || !payload.data) {
+      const { payload, direction = 'pc_to_phone', expiresInSeconds = 600 } = req.body;
+      
+      // If PC -> Phone, payload is required upfront.
+      // If Phone -> PC, payload will be uploaded by the phone later.
+      if (direction === 'pc_to_phone' && (!payload || !payload.data)) {
         return res.status(400).json({ success: false, error: "INVALID_PAYLOAD", message: "Invalid transfer payload" });
       }
 
@@ -62,10 +68,11 @@ async function startServer() {
       const session: TransferSession = {
         sessionId,
         token,
+        direction: direction === 'phone_to_pc' ? 'phone_to_pc' : 'pc_to_phone',
         createdAt,
         expiresAt,
         status: "waiting",
-        payload
+        payload: direction === 'pc_to_phone' ? payload : undefined
       };
 
       transferSessions.set(sessionId, session);
@@ -78,6 +85,7 @@ async function startServer() {
         success: true,
         sessionId,
         token,
+        direction: session.direction,
         expiresAt,
         qrData
       });
@@ -126,18 +134,72 @@ async function startServer() {
       res.json({
         success: true,
         sessionId: session.sessionId,
+        direction: session.direction,
         status: session.status,
         expiresAt: session.expiresAt,
         counts: {
           members: Array.isArray(data.members) ? data.members.length : 0,
           songs: Array.isArray(data.songs) ? data.songs.length : 0,
           schedules: Array.isArray(data.schedules) ? data.schedules.length : 0,
+          songFamilies: Array.isArray(data.songFamilies) ? data.songFamilies.length : 0,
           hasDraft: Boolean(data.draft)
         },
         payload: session.payload
       });
     } catch (err: any) {
       console.error("Error retrieving transfer session:", err);
+      res.status(500).json({ success: false, error: "SERVER_ERROR", message: err.message });
+    }
+  });
+
+  // Upload endpoint for Phone -> PC transfer
+  app.post("/api/transfer/session/:sessionId/upload", (req, res) => {
+    try {
+      const { sessionId } = req.params;
+      const token = (req.body.token as string) || (req.query.token as string) || (req.headers["x-transfer-token"] as string);
+      const { payload } = req.body;
+
+      const session = transferSessions.get(sessionId);
+      if (!session) {
+        return res.status(404).json({ success: false, error: "NOT_FOUND", message: "Transfer session not found or has expired." });
+      }
+
+      if (session.token !== token) {
+        return res.status(403).json({ success: false, error: "UNAUTHORIZED", message: "Invalid session token." });
+      }
+
+      const now = Date.now();
+      if (now > session.expiresAt) {
+        session.status = "expired";
+        return res.status(410).json({ success: false, error: "EXPIRED", message: "This transfer session has expired." });
+      }
+
+      if (session.status === "completed") {
+        return res.status(410).json({ success: false, error: "ALREADY_USED", message: "This transfer session has already been used." });
+      }
+
+      if (session.status === "cancelled") {
+        return res.status(410).json({ success: false, error: "CANCELLED", message: "This transfer session was cancelled." });
+      }
+
+      if (session.direction !== "phone_to_pc") {
+        return res.status(400).json({ success: false, error: "INVALID_DIRECTION", message: "This session is not configured to receive phone uploads." });
+      }
+
+      if (!payload || !payload.data) {
+        return res.status(400).json({ success: false, error: "INVALID_PAYLOAD", message: "Invalid transfer payload data." });
+      }
+
+      session.payload = payload;
+      session.status = "data_ready";
+
+      res.json({
+        success: true,
+        message: "Data uploaded successfully.",
+        status: session.status
+      });
+    } catch (err: any) {
+      console.error("Error uploading transfer data:", err);
       res.status(500).json({ success: false, error: "SERVER_ERROR", message: err.message });
     }
   });
@@ -161,22 +223,32 @@ async function startServer() {
         session.status = "expired";
       }
 
+      const data = session.payload?.data;
+
       res.json({
         success: true,
         sessionId: session.sessionId,
+        direction: session.direction,
         status: session.status,
-        expiresAt: session.expiresAt
+        expiresAt: session.expiresAt,
+        counts: data ? {
+          members: Array.isArray(data.members) ? data.members.length : 0,
+          songs: Array.isArray(data.songs) ? data.songs.length : 0,
+          schedules: Array.isArray(data.schedules) ? data.schedules.length : 0,
+          songFamilies: Array.isArray(data.songFamilies) ? data.songFamilies.length : 0,
+          hasDraft: Boolean(data.draft)
+        } : undefined
       });
     } catch (err: any) {
       res.status(500).json({ success: false, error: "SERVER_ERROR" });
     }
   });
 
-  // Complete session (Phone confirms import)
+  // Complete session (Phone confirms import OR PC confirms import)
   app.post("/api/transfer/session/:sessionId/complete", (req, res) => {
     try {
       const { sessionId } = req.params;
-      const token = (req.body.token as string) || (req.query.token as string);
+      const token = (req.body.token as string) || (req.query.token as string) || (req.headers["x-transfer-token"] as string);
 
       const session = transferSessions.get(sessionId);
       if (!session) {
@@ -200,7 +272,7 @@ async function startServer() {
   app.post("/api/transfer/session/:sessionId/cancel", (req, res) => {
     try {
       const { sessionId } = req.params;
-      const token = (req.body.token as string) || (req.query.token as string);
+      const token = (req.body.token as string) || (req.query.token as string) || (req.headers["x-transfer-token"] as string);
 
       const session = transferSessions.get(sessionId);
       if (session && session.token === token) {

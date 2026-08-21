@@ -82,7 +82,7 @@ export const MemberEditorView: React.FC<MemberEditorViewProps> = ({
   const filterDropdownRef = useRef<HTMLDivElement>(null);
 
   // Disciplinary Action Modal state
-  const [disciplinaryModalMember, setDisciplinaryModalMember] = useState<Member | null>(null);
+  const [disciplinaryModalMembers, setDisciplinaryModalMembers] = useState<Member[] | null>(null);
   const [dispStatus, setDispStatus] = useState<'active' | 'cleared'>('active');
   const [dispDurationType, setDispDurationType] = useState<DisciplinaryDurationType>('days');
   const [dispDurationValue, setDispDurationValue] = useState<number>(7);
@@ -102,14 +102,16 @@ export const MemberEditorView: React.FC<MemberEditorViewProps> = ({
     };
   } | null>(null);
 
-  const handleOpenDisciplinaryModal = (member: Member) => {
-    setDisciplinaryModalMember(member);
-    if (member.disciplinaryAction) {
-      setDispStatus(member.disciplinaryAction.status);
-      setDispDurationType(member.disciplinaryAction.durationType || 'days');
-      setDispDurationValue(member.disciplinaryAction.durationValue || 7);
-      setDispStartDate(member.disciplinaryAction.startDate || getManilaTodayString());
-      setDispReason(member.disciplinaryAction.reason || '');
+  const handleOpenDisciplinaryModal = (targetMembers: Member[]) => {
+    if (targetMembers.length === 0) return;
+    setDisciplinaryModalMembers(targetMembers);
+    if (targetMembers.length === 1 && targetMembers[0].disciplinaryAction) {
+      const da = targetMembers[0].disciplinaryAction;
+      setDispStatus(da.status);
+      setDispDurationType(da.durationType || 'days');
+      setDispDurationValue(da.durationValue || 7);
+      setDispStartDate(da.startDate || getManilaTodayString());
+      setDispReason(da.reason || '');
     } else {
       setDispStatus('active');
       setDispDurationType('days');
@@ -127,12 +129,14 @@ export const MemberEditorView: React.FC<MemberEditorViewProps> = ({
 
   const handleSaveDisciplinaryAction = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!disciplinaryModalMember) return;
+    if (!disciplinaryModalMembers || disciplinaryModalMembers.length === 0) return;
 
     if (dispStatus === 'active' && (!dispDurationValue || dispDurationValue <= 0)) {
       showToast('Please enter a valid duration value greater than 0.', 'danger');
       return;
     }
+
+    const targetIds = new Set(disciplinaryModalMembers.map((m) => m.id));
 
     const newAction: DisciplinaryAction = {
       status: dispStatus,
@@ -145,21 +149,29 @@ export const MemberEditorView: React.FC<MemberEditorViewProps> = ({
     };
 
     const updatedMembers = members.map((m) =>
-      m.id === disciplinaryModalMember.id ? { ...m, disciplinaryAction: newAction } : m
+      targetIds.has(m.id) ? { ...m, disciplinaryAction: newAction } : m
     );
 
     onSaveMembers(updatedMembers);
 
     if (dispStatus === 'active') {
       showToast(
-        `Disciplinary action active for ${disciplinaryModalMember.name} until ${computedEndDate}.`,
+        disciplinaryModalMembers.length === 1
+          ? `Disciplinary action active for ${disciplinaryModalMembers[0].name} until ${computedEndDate}.`
+          : `Disciplinary action applied to ${disciplinaryModalMembers.length} members until ${computedEndDate}.`,
         'success'
       );
     } else {
-      showToast(`Disciplinary status for ${disciplinaryModalMember.name} has been cleared.`, 'info');
+      showToast(
+        disciplinaryModalMembers.length === 1
+          ? `Disciplinary status for ${disciplinaryModalMembers[0].name} has been cleared.`
+          : `Disciplinary status for ${disciplinaryModalMembers.length} members has been cleared.`,
+        'info'
+      );
     }
 
-    setDisciplinaryModalMember(null);
+    clearSelection();
+    setDisciplinaryModalMembers(null);
   };
 
   const [sortOption, setSortOption] = useState<MemberSortOption>(() => {
@@ -830,121 +842,108 @@ export const MemberEditorView: React.FC<MemberEditorViewProps> = ({
                   </button>
                 </div>
               )}
+            </div>
+          </div>
 
-              {/* 🌟 Universal Action Buttons Toolbar */}
-              <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-slate-100 dark:border-slate-800">
-                <div className="flex flex-wrap items-center gap-2">
-                  {/* Edit Member Button */}
+          {/* 🌟 Universal Action Buttons Toolbar */}
+          <div
+            data-tour="member-bulk-actions"
+            className="sticky top-[73px] sm:top-[77px] z-20 flex flex-wrap items-center justify-between gap-3 p-3 rounded-xl bg-slate-50/95 dark:bg-slate-900/95 backdrop-blur-md border border-slate-200/90 dark:border-slate-700 shadow-sm transition-all"
+          >
+            <div className="flex items-center gap-3">
+              <label className="inline-flex items-center gap-2 text-xs font-bold text-slate-700 dark:text-slate-300 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={isAllSelected}
+                  ref={(el) => {
+                    if (el) el.indeterminate = isSomeSelected;
+                  }}
+                  onChange={() => toggleSelectAll(filteredMembers)}
+                  className="w-4 h-4 rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                />
+                <span>Select All ({filteredMembers.length})</span>
+              </label>
+
+              {selectedCount > 0 && (
+                <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
+                  {selectedCount} selected
+                </span>
+              )}
+            </div>
+
+            {selectedCount > 0 && (
+              <div className="flex flex-wrap items-center gap-2">
+                {selectedCount === 1 && (
+                  /* Edit Member Button */
                   <button
                     type="button"
-                    disabled={selectedCount !== 1}
                     onClick={() => {
                       const selectedMembers = members.filter((m) => selectedIds.has(m.id));
-                      if (selectedMembers.length === 0) {
-                        showToast('Please select a member to edit.', 'info');
-                        return;
+                      if (selectedMembers.length === 1) {
+                        handleEditClick(selectedMembers[0]);
                       }
-                      if (selectedMembers.length > 1) {
-                        showToast('Please select only one member to edit.', 'info');
-                        return;
-                      }
-                      handleEditClick(selectedMembers[0]);
                     }}
-                    className={`inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-lg border transition-all cursor-pointer select-none ${
-                      selectedCount === 1
-                        ? 'bg-indigo-600 hover:bg-indigo-700 text-white border-indigo-600 shadow-xs'
-                        : 'bg-slate-100 dark:bg-slate-800/60 text-slate-400 dark:text-slate-600 border-slate-200 dark:border-slate-800/80 cursor-not-allowed opacity-60'
-                    }`}
-                    title={
-                      selectedCount === 0
-                        ? 'Select 1 member to edit'
-                        : selectedCount > 1
-                        ? 'Select only 1 member to edit'
-                        : 'Edit selected member'
-                    }
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-lg border bg-indigo-600 hover:bg-indigo-700 text-white border-indigo-600 shadow-xs transition-all cursor-pointer select-none"
+                    title="Edit selected member"
                   >
                     <Edit3 className="w-3.5 h-3.5" />
                     <span>Edit Member</span>
                   </button>
-
-                  {/* DA Member Button */}
-                  <button
-                    type="button"
-                    disabled={selectedCount !== 1}
-                    onClick={() => {
-                      const selectedMembers = members.filter((m) => selectedIds.has(m.id));
-                      if (selectedMembers.length === 0) {
-                        showToast('Please select a member for Disciplinary Action.', 'info');
-                        return;
-                      }
-                      if (selectedMembers.length > 1) {
-                        showToast('Please select only one member for Disciplinary Action.', 'info');
-                        return;
-                      }
-                      handleOpenDisciplinaryModal(selectedMembers[0]);
-                    }}
-                    className={`inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-lg border transition-all cursor-pointer select-none ${
-                      selectedCount === 1
-                        ? 'bg-amber-500 hover:bg-amber-600 text-white border-amber-500 shadow-xs'
-                        : 'bg-slate-100 dark:bg-slate-800/60 text-slate-400 dark:text-slate-600 border-slate-200 dark:border-slate-800/80 cursor-not-allowed opacity-60'
-                    }`}
-                    title={
-                      selectedCount === 0
-                        ? 'Select 1 member for Disciplinary Action'
-                        : selectedCount > 1
-                        ? 'Select only 1 member for Disciplinary Action'
-                        : 'Manage Disciplinary Action'
-                    }
-                  >
-                    <ShieldAlert className="w-3.5 h-3.5" />
-                    <span>DA Member</span>
-                  </button>
-
-                  {/* Delete Member Button */}
-                  <button
-                    type="button"
-                    disabled={selectedCount === 0}
-                    onClick={() => {
-                      const selectedMembers = members.filter((m) => selectedIds.has(m.id));
-                      if (selectedMembers.length === 0) {
-                        showToast('Please select member(s) to delete.', 'info');
-                        return;
-                      }
-                      handleRequestDelete(selectedMembers);
-                    }}
-                    className={`inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-lg border transition-all cursor-pointer select-none ${
-                      selectedCount >= 1
-                        ? 'bg-rose-600 hover:bg-rose-700 text-white border-rose-600 shadow-xs'
-                        : 'bg-slate-100 dark:bg-slate-800/60 text-slate-400 dark:text-slate-600 border-slate-200 dark:border-slate-800/80 cursor-not-allowed opacity-60'
-                    }`}
-                    title={
-                      selectedCount === 0
-                        ? 'Select member(s) to delete'
-                        : `Delete ${selectedCount} selected member(s)`
-                    }
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                    <span>Delete Member{selectedCount > 1 ? `s (${selectedCount})` : ''}</span>
-                  </button>
-                </div>
-
-                {selectedCount > 0 && (
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-bold text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/80 px-2.5 py-1 rounded-full border border-indigo-200/80 dark:border-indigo-800/80">
-                      {selectedCount} selected
-                    </span>
-                    <button
-                      type="button"
-                      onClick={clearSelection}
-                      className="text-[11px] font-semibold text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 underline cursor-pointer"
-                    >
-                      Clear
-                    </button>
-                  </div>
                 )}
-              </div>
-            </div>
 
+                {/* DA Member Button */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    const selectedMembers = members.filter((m) => selectedIds.has(m.id));
+                    if (selectedMembers.length > 0) {
+                      handleOpenDisciplinaryModal(selectedMembers);
+                    }
+                  }}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-lg border bg-amber-500 hover:bg-amber-600 text-white border-amber-500 shadow-xs transition-all cursor-pointer select-none"
+                  title={
+                    selectedCount === 1
+                      ? 'Manage Disciplinary Action'
+                      : `Apply Disciplinary Action to ${selectedCount} selected members`
+                  }
+                >
+                  <ShieldAlert className="w-3.5 h-3.5" />
+                  <span>DA Member</span>
+                </button>
+
+                {/* Delete Member Button */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    const selectedMembers = members.filter((m) => selectedIds.has(m.id));
+                    if (selectedMembers.length > 0) {
+                      handleRequestDelete(selectedMembers);
+                    }
+                  }}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-lg border bg-rose-600 hover:bg-rose-700 text-white border-rose-600 shadow-xs transition-all cursor-pointer select-none"
+                  title={
+                    selectedCount === 1
+                      ? 'Delete selected member'
+                      : `Delete ${selectedCount} selected members`
+                  }
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Delete Member{selectedCount > 1 ? `s (${selectedCount})` : ''}</span>
+                </button>
+
+                {/* Clear Selection */}
+                <button
+                  type="button"
+                  onClick={clearSelection}
+                  className="text-[11px] font-semibold text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 underline cursor-pointer ml-1"
+                >
+                  Clear
+                </button>
+              </div>
+            )}
+          </div>
+
+          <div className="p-6 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs overflow-hidden">
             {filteredMembers.length === 0 ? (
               members.length === 0 ? (
                 <div className="p-12 text-center text-slate-500 dark:text-slate-400 space-y-2">
@@ -966,17 +965,7 @@ export const MemberEditorView: React.FC<MemberEditorViewProps> = ({
                 <table className="w-full text-left text-xs border-collapse">
                   <thead>
                     <tr className="border-b border-slate-100 dark:border-slate-800 text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider bg-slate-50/50 dark:bg-slate-800/30">
-                      <th className="py-2.5 px-3 w-8">
-                        <input
-                          type="checkbox"
-                          checked={isAllSelected}
-                          ref={(el) => {
-                            if (el) el.indeterminate = isSomeSelected;
-                          }}
-                          onChange={() => toggleSelectAll(filteredMembers)}
-                          className="w-4 h-4 rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
-                        />
-                      </th>
+                      <th className="py-2.5 px-3 w-8" aria-label="Row selection"></th>
                       <th className="py-2.5 px-3">Member Name</th>
                       <th className="py-2.5 px-3">Assigned Labels</th>
                     </tr>
@@ -1060,7 +1049,7 @@ export const MemberEditorView: React.FC<MemberEditorViewProps> = ({
         }
       />
       {/* Disciplinary Action Modal */}
-      {disciplinaryModalMember && (
+      {disciplinaryModalMembers && disciplinaryModalMembers.length > 0 && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
           <div className="w-full max-w-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl overflow-hidden space-y-0">
             {/* Modal Header */}
@@ -1071,22 +1060,51 @@ export const MemberEditorView: React.FC<MemberEditorViewProps> = ({
                 </div>
                 <div>
                   <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">
-                    Disciplinary Action
+                    {disciplinaryModalMembers.length === 1
+                      ? 'Disciplinary Action'
+                      : 'Apply Disciplinary Action?'}
                   </h3>
                   <p className="text-xs text-slate-500 dark:text-slate-400">
-                    Managing status for <span className="font-bold text-slate-800 dark:text-slate-200">{disciplinaryModalMember.name}</span>
+                    {disciplinaryModalMembers.length === 1 ? (
+                      <>
+                        Managing status for <span className="font-bold text-slate-800 dark:text-slate-200">{disciplinaryModalMembers[0].name}</span>
+                      </>
+                    ) : (
+                      <>
+                        You are about to place <span className="font-bold text-slate-800 dark:text-slate-200">{disciplinaryModalMembers.length} members</span> under Disciplinary Action.
+                      </>
+                    )}
                   </p>
                 </div>
               </div>
 
               <button
                 type="button"
-                onClick={() => setDisciplinaryModalMember(null)}
+                onClick={() => setDisciplinaryModalMembers(null)}
                 className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg cursor-pointer transition-colors"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
+
+            {/* If multiple members selected, show member chips */}
+            {disciplinaryModalMembers.length > 1 && (
+              <div className="px-6 py-3 bg-slate-50/80 dark:bg-slate-800/50 border-b border-slate-100 dark:border-slate-800 max-h-28 overflow-y-auto">
+                <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-1.5">
+                  Selected Members ({disciplinaryModalMembers.length})
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {disciplinaryModalMembers.map((m) => (
+                    <span
+                      key={m.id}
+                      className="px-2 py-0.5 rounded-md text-xs font-semibold bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-700"
+                    >
+                      {m.name}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Modal Body / Form */}
             <form onSubmit={handleSaveDisciplinaryAction} className="p-6 space-y-5">
@@ -1138,6 +1156,13 @@ export const MemberEditorView: React.FC<MemberEditorViewProps> = ({
 
               {dispStatus === 'active' && (
                 <div className="space-y-4 pt-1 animate-in fade-in duration-200">
+                  {/* Notice Banner */}
+                  <div className="p-3 rounded-lg bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900/60 text-xs text-amber-800 dark:text-amber-200">
+                    {disciplinaryModalMembers.length === 1
+                      ? 'You are about to place 1 member under Disciplinary Action.'
+                      : `You are about to place ${disciplinaryModalMembers.length} members under Disciplinary Action.`}
+                  </div>
+
                   {/* Duration Value & Type */}
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-1.5">
@@ -1220,7 +1245,7 @@ export const MemberEditorView: React.FC<MemberEditorViewProps> = ({
               <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
                 <button
                   type="button"
-                  onClick={() => setDisciplinaryModalMember(null)}
+                  onClick={() => setDisciplinaryModalMembers(null)}
                   className="px-4 py-2 text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
                 >
                   Cancel
@@ -1229,7 +1254,7 @@ export const MemberEditorView: React.FC<MemberEditorViewProps> = ({
                   type="submit"
                   className="px-4 py-2 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-lg shadow-xs transition-colors cursor-pointer"
                 >
-                  Save Disciplinary Record
+                  Confirm DA
                 </button>
               </div>
             </form>
